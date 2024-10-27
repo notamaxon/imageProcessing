@@ -84,6 +84,20 @@ def apply_negative(input_file, output_file):
     except Exception as e:
         print(f"Error occurred while applying negative: {e}")
 
+def horizontal_flip(input_file, output_file):
+    try:
+        im = Image.open(input_file)
+        arr = np.array(im)
+
+        flipped_arr = np.fliplr(arr)
+
+        new_im = Image.fromarray(flipped_arr.astype(np.uint8))
+        new_im.save(output_file)
+        print(f"Horizontal flipped image saved as {output_file}")
+
+    except Exception as e:
+        print(f"Error occurred while flipping image: {e}")
+
 if args.command == 'readwrite':
     if args.input and args.output:
         read_and_write_image(args.input, args.output)
@@ -108,6 +122,11 @@ elif args.command == 'negative':
     else:
         print("Please provide input and output image files")
 
+elif args.command == 'hflip':
+    if args.input and args.output:
+        horizontal_flip(args.input, args.output)
+    else:
+        print("Please provide input and output image files") 
 
 elif args.command == 'help':
     parser.print_help()
