@@ -12,7 +12,7 @@ parser.add_argument('--contrast', type=int, help="Contrast adjustment value (neg
 args = parser.parse_args()
 
 
-def read_and_write_image(input_file, output_file, brightness_value):
+def read_and_write_image(input_file, output_file):
     try:
         im = Image.open(input_file)
 
@@ -40,7 +40,7 @@ def adjust_brightness(input_file, output_file, brightness_value):
             arr = arr.astype(np.int32)  
             arr += brightness_value  
             arr = np.clip(arr, 0, 255) 
-         
+ 
         new_im = Image.fromarray(arr.astype(np.uint8))
 
         new_im.save(output_file)
@@ -70,7 +70,19 @@ def adjust_contrast(input_file, output_file, contrast_value):
         print(f"Error occured while adjusting contrast: {e}")    
 
     
+def apply_negative(input_file, output_file):
+    try:
+        im = Image.open(input_file)
+        arr = np.array(im)
 
+        # Perform negation for RGB images
+        arr = 255 - arr  # Invert the colors
+        
+        new_im = Image.fromarray(arr.astype(np.uint8))
+        new_im.save(output_file)
+        print(f"Negative image saved as {output_file}")
+    except Exception as e:
+        print(f"Error occurred while applying negative: {e}")
 
 if args.command == 'readwrite':
     if args.input and args.output:
@@ -83,12 +95,19 @@ elif args.command == 'brightness':
         adjust_brightness(args.input, args.output, args.brightness)
     else:
         print("Please provide input, output image files, and brightness value")
-        
+
 elif args.command == 'contrast':
     if args.input and args.output and args.contrast is not None:
         adjust_contrast(args.input, args.output, args.contrast)
     else:
         print("Please provide input and ouput image files, and a contrast value")    
+
+elif args.command == 'negative':
+    if args.input and args.output:
+        apply_negative(args.input, args.output)
+    else:
+        print("Please provide input and output image files")
+
 
 elif args.command == 'help':
     parser.print_help()
