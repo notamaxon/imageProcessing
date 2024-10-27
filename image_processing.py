@@ -7,6 +7,8 @@ parser.add_argument('--command', type=str, help="Command to run (e.g., readwrite
 parser.add_argument('--input', type=str, help="Input BMP image file")
 parser.add_argument('--output', type=str, help="Output BMP image file")
 parser.add_argument('--brightness', type=int, help="Brightness adjustment value (positive to increase, negative to decrease)")
+parser.add_argument('--contrast', type=int, help="Contrast adjustment value (negative to decrease, positive to increase)")
+
 args = parser.parse_args()
 
 
@@ -47,6 +49,28 @@ def adjust_brightness(input_file, output_file, brightness_value):
     except Exception as e:
         print(f"Error occurred while adjusting brightness: {e}")
 
+def adjust_contrast(input_file, output_file, contrast_value):
+    try:
+        im = Image.open(input_file)
+
+        arr = np.array(im)
+
+        factor = (259 * (contrast_value + 255)) / (255 * (259 - contrast_value))
+
+        arr = arr.astype(np.int32)
+        arr = factor * (arr - 128) + 128
+        arr = np.clip(arr, 0, 255)
+
+        new_im = Image.fromarray(arr.astype(np.uint8))
+
+        new_im.save(output_file)
+        print(f"Contrast adjusted image saved as {output_file}")
+
+    except Exception as e:
+        print(f"Error occured while adjusting contrast: {e}")    
+
+    
+
 
 if args.command == 'readwrite':
     if args.input and args.output:
@@ -59,6 +83,13 @@ elif args.command == 'brightness':
         adjust_brightness(args.input, args.output, args.brightness)
     else:
         print("Please provide input, output image files, and brightness value")
+        
+elif args.command == 'contrast':
+    if args.input and args.output and args.contrast is not None:
+        adjust_contrast(args.input, args.output, args.contrast)
+    else:
+        print("Please provide input and ouput image files, and a contrast value")    
+
 elif args.command == 'help':
     parser.print_help()
 else:
