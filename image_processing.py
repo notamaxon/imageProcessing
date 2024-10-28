@@ -14,7 +14,7 @@ parser.add_argument('--vflip', action='store_true', help="Apply vertical flip")
 parser.add_argument('--dflip', action='store_true', help="Apply diagonal flip")
 parser.add_argument('--shrink', type=int, help="Scale factor for shrinking the image")
 parser.add_argument('--alpha', type=int, help="Alpha parameter for Alpha-trimmed mean filter (must be even)")
-
+parser.add_argument('--q', type=float, help="Q parameter for Contraharmonic mean filter")
 
 args = parser.parse_args()
 
@@ -231,6 +231,45 @@ def alpha_trimmed_mean_filter(image, window_size=3, alpha=2):
                     
     return output_image
 
+def contraharmonic_mean_filter(image, window_size=3, Q=1.5):
+    padding = window_size // 2
+    if image.ndim == 2:  # Grayscale image
+        padded_image = np.pad(image, padding, mode='constant', constant_values=0)
+        output_image = np.zeros_like(image, dtype=float)
+
+        for x in range(padding, padded_image.shape[0] - padding):
+            for y in range(padding, padded_image.shape[1] - padding):
+                window = padded_image[x - padding:x + padding + 1, y - padding:y + padding + 1]
+                
+                # Only consider non-zero values in the window to avoid divide-by-zero issues
+                non_zero_window = window[window != 0]
+                
+                if non_zero_window.size > 0:  # Check if there are any non-zero values
+                    numerator = np.sum(non_zero_window ** (Q + 1))
+                    denominator = np.sum(non_zero_window ** Q)
+                    output_image[x - padding, y - padding] = numerator / denominator if denominator != 0 else 0
+                else:
+                    output_image[x - padding, y - padding] = 0  # If all values are zero, set output to zero
+
+    else:  # Color image
+        output_image = np.zeros_like(image, dtype=float)
+        for c in range(image.shape[2]):  # Loop over color channels
+            padded_channel = np.pad(image[:, :, c], padding, mode='constant', constant_values=0)
+            for x in range(padding, padded_channel.shape[0] - padding):
+                for y in range(padding, padded_channel.shape[1] - padding):
+                    window = padded_channel[x - padding:x + padding + 1, y - padding:y + padding + 1]
+                    
+                    non_zero_window = window[window != 0]
+                    
+                    if non_zero_window.size > 0:
+                        numerator = np.sum(non_zero_window ** (Q + 1))
+                        denominator = np.sum(non_zero_window ** Q)
+                        output_image[x - padding, y - padding, c] = numerator / denominator if denominator != 0 else 0
+                    else:
+                        output_image[x - padding, y - padding, c] = 0  # If all values are zero, set output to zero
+                    
+    return np.clip(output_image, 0, 255)
+
 # Function to apply Alpha-trimmed mean filter and save result
 def apply_alpha_trimmed(input_file, output_file, alpha):
     im = Image.open(input_file)
@@ -240,6 +279,14 @@ def apply_alpha_trimmed(input_file, output_file, alpha):
     new_im.save(output_file)
     print(f"Alpha-trimmed mean filtered image saved as {output_file}")
 
+# Function to apply Contraharmonic Mean Filter and save result
+def apply_contraharmonic(input_file, output_file, Q):
+    im = Image.open(input_file)
+    arr = np.array(im)
+    filtered_image = contraharmonic_mean_filter(arr, Q=Q)
+    new_im = Image.fromarray(filtered_image.astype(np.uint8))
+    new_im.save(output_file)
+    print(f"Contraharmonic mean filtered image saved as {output_file}")
 
 
 if args.command == 'readwrite':
@@ -290,11 +337,17 @@ elif args.command == 'shrink':
     else:
         print("Please provide input, output image files, and a scale factor")
 
-elif args.command == 'alpha_trimmed':
+elif args.command == 'alpha':
     if args.input and args.output and args.alpha is not None:
         apply_alpha_trimmed(args.input, args.output, args.alpha)
     else:
         print("Please provide input and output image files, and an alpha value")
+
+elif args.command == 'cmean':
+    if args.input and args.output and args.q is not None:
+        apply_contraharmonic(args.input, args.output, args.q)
+    else:
+        print("Please provide input and output image files, and a Q value for the Contraharmonic filter")
         
 
 elif args.command == 'help':
