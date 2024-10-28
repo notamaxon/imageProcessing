@@ -12,12 +12,8 @@ parser.add_argument('--negative', action='store_true', help="Apply negative effe
 parser.add_argument('--hflip', action='store_true', help="Apply horizontal flip")
 parser.add_argument('--vflip', action='store_true', help="Apply vertical flip")
 parser.add_argument('--dflip', action='store_true', help="Apply diagonal flip")
-<<<<<<< HEAD
 parser.add_argument('--shrink', type=int, help="Scale factor for shrinking the image")
 
-=======
-parser.add_argument('--alpha', type=int, help="Alpha parameter for Alpha-trimmed mean filter (must be even)")
->>>>>>> 5bb5feea456e66feb125cd76b4bc3523ecdf75ae
 
 args = parser.parse_args()
 
@@ -178,34 +174,7 @@ def diagonal_flip(input_file, output_file):
     except Exception as e:
         print(f"Error occurred while performing diagonal flip: {e}")
 
-def alpha_trimmed_mean_filter(image, window_size=3, alpha=2):
-    padding = window_size // 2
-    if image.ndim == 2:  # Grayscale image
-        padded_image = np.pad(image, padding, mode='constant', constant_values=0)
-        output_image = np.zeros_like(image)
-        
-        for x in range(padding, padded_image.shape[0] - padding):
-            for y in range(padding, padded_image.shape[1] - padding):
-                # Extract and process the window
-                window = padded_image[x - padding:x + padding + 1, y - padding:y + padding + 1]
-                trimmed_window = np.sort(window.flatten())[alpha//2 : -alpha//2]
-                output_image[x - padding, y - padding] = np.mean(trimmed_window)
-                
-    else:  # Color image
-        output_image = np.zeros_like(image)
-        for c in range(image.shape[2]):  # Loop over color channels
-            padded_channel = np.pad(image[:, :, c], padding, mode='constant', constant_values=0)
-            
-            for x in range(padding, padded_channel.shape[0] - padding):
-                for y in range(padding, padded_channel.shape[1] - padding):
-                    # Extract and process the window for the current channel
-                    window = padded_channel[x - padding:x + padding + 1, y - padding:y + padding + 1]
-                    trimmed_window = np.sort(window.flatten())[alpha//2 : -alpha//2]
-                    output_image[x - padding, y - padding, c] = np.mean(trimmed_window)
-                    
-    return output_image
 
-<<<<<<< HEAD
 
 def shrink(input_file, output_file, scale_factor):
     try:
@@ -237,16 +206,6 @@ def shrink(input_file, output_file, scale_factor):
 
 
 
-=======
-# Function to apply Alpha-trimmed mean filter and save result
-def apply_alpha_trimmed(input_file, output_file, alpha):
-    im = Image.open(input_file)
-    arr = np.array(im)  # Convert to grayscale
-    filtered_image = alpha_trimmed_mean_filter(arr, alpha=alpha)
-    new_im = Image.fromarray(filtered_image.astype(np.uint8))
-    new_im.save(output_file)
-    print(f"Alpha-trimmed mean filtered image saved as {output_file}")
->>>>>>> 5bb5feea456e66feb125cd76b4bc3523ecdf75ae
 
 if args.command == 'readwrite':
     if args.input and args.output:
@@ -266,12 +225,6 @@ elif args.command == 'contrast':
     else:
         print("Please provide input and ouput image files, and a contrast value")    
 
-elif args.command == 'alpha_trimmed':
-    if args.input and args.output and args.alpha is not None:
-        apply_alpha_trimmed(args.input, args.output, args.alpha)
-    else:
-        print("Please provide input and output image files, and an alpha value")
-        
 elif args.command == 'negative':
     if args.input and args.output:
         apply_negative(args.input, args.output)
