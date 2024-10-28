@@ -13,6 +13,7 @@ parser.add_argument('--hflip', action='store_true', help="Apply horizontal flip"
 parser.add_argument('--vflip', action='store_true', help="Apply vertical flip")
 parser.add_argument('--dflip', action='store_true', help="Apply diagonal flip")
 parser.add_argument('--shrink', type=int, help="Scale factor for shrinking the image")
+parser.add_argument('--enlarge', type=int, help="Scale factor for enlarging the image")
 parser.add_argument('--alpha', type=int, help="Alpha parameter for Alpha-trimmed mean filter (must be even)")
 
 
@@ -204,6 +205,50 @@ def shrink(input_file, output_file, scale_factor):
     except Exception as e:
         print(f"Error occurred while shrinking the image: {e}")
 
+def enlarge_image(input_file, output_file, scale_factor):
+    try:
+        im = Image.open(input_file)
+        arr = np.array(im)
+
+        height, width = arr.shape[:2]
+        
+        new_height = height * scale_factor
+        new_width = width * scale_factor
+        
+        enlarged_arr = np.zeros((new_height, new_width, arr.shape[2]), dtype=arr.dtype) if arr.ndim == 3 else np.zeros((new_height, new_width), dtype=arr.dtype)
+
+        # bilinear interpolation
+        for y in range(new_height):
+            for x in range(new_width):
+
+                src_y = y / scale_factor
+                src_x = x / scale_factor
+                
+                x0 = int(src_x)
+                y0 = int(src_y)
+                
+                x_diff = src_x - x0
+                y_diff = src_y - y0
+                
+                # Get the neighboring pixels
+                if x0 + 1 < width and y0 + 1 < height:
+                    top_left = arr[y0, x0]
+                    top_right = arr[y0, x0 + 1]
+                    bottom_left = arr[y0 + 1, x0]
+                    bottom_right = arr[y0 + 1, x0 + 1]
+
+                    top = (1 - x_diff) * top_left + x_diff * top_right
+                    bottom = (1 - x_diff) * bottom_left + x_diff * bottom_right
+                    enlarged_arr[y, x] = (1 - y_diff) * top + y_diff * bottom
+        
+        new_im = Image.fromarray(enlarged_arr.astype(np.uint8))
+        new_im.save(output_file)
+        print(f"Enlarged image saved as {output_file}")
+
+    except Exception as e:
+        print(f"Error occurred while enlarging image: {e}")
+
+
 def alpha_trimmed_mean_filter(image, window_size=3, alpha=2):
     padding = window_size // 2
     if image.ndim == 2:  # Grayscale image
@@ -289,6 +334,12 @@ elif args.command == 'shrink':
         shrink(args.input, args.output, args.shrink)
     else:
         print("Please provide input, output image files, and a scale factor")
+
+elif args.command == 'enlarge':
+    if args.input and args.output and args.enlarge is not None:
+        enlarge_image(args.input, args.output, args.enlarge)
+    else:
+        print("Please provide input, output image files, and a scale factor for enlargement")
 
 elif args.command == 'alpha_trimmed':
     if args.input and args.output and args.alpha is not None:
