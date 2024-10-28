@@ -98,6 +98,36 @@ def horizontal_flip(input_file, output_file):
     except Exception as e:
         print(f"Error occurred while flipping image: {e}")
 
+def horizontal_flip(input_file, output_file):
+    try:
+        im = Image.open(input_file)
+
+        arr = np.array(im)
+
+        if arr.ndim == 2:  
+            height, width = arr.shape
+            flipped_arr = np.zeros_like(arr)  
+            
+            for y in range(height):
+                for x in range(width):
+                    flipped_arr[y, width - 1 - x] = arr[y, x]
+        else:  
+            height, width, channels = arr.shape
+            flipped_arr = np.zeros_like(arr) 
+            
+            for y in range(height):
+                for x in range(width):
+                    flipped_arr[y, width - 1 - x, :] = arr[y, x, :]  
+        
+        new_im = Image.fromarray(flipped_arr.astype(np.uint8))
+
+        new_im.save(output_file)
+        print(f"Horizontal flipped image saved as {output_file}")
+
+    except Exception as e:
+        print(f"Error occurred while performing horizontal flip: {e}")
+
+
 if args.command == 'readwrite':
     if args.input and args.output:
         read_and_write_image(args.input, args.output)
