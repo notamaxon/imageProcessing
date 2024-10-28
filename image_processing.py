@@ -15,6 +15,11 @@ parser.add_argument('--dflip', action='store_true', help="Apply diagonal flip")
 parser.add_argument('--shrink', type=int, help="Scale factor for shrinking the image")
 parser.add_argument('--enlarge', type=int, help="Scale factor for enlarging the image")
 parser.add_argument('--alpha', type=int, help="Alpha parameter for Alpha-trimmed mean filter (must be even)")
+parser.add_argument('--mse', action='store_true', help="Calculate Mean Square Error")
+parser.add_argument('--pmse', action='store_true', help="Calculate Peak Mean Square Error")
+parser.add_argument('--snr', action='store_true', help="Calculate Signal to Noise Ratio")
+parser.add_argument('--psnr', action='store_true', help="Calculate Peak Signal to Noise Ratio")
+parser.add_argument('--md', action='store_true', help="Calculate Maximum Difference")
 
 
 args = parser.parse_args()
@@ -286,6 +291,34 @@ def apply_alpha_trimmed(input_file, output_file, alpha):
     print(f"Alpha-trimmed mean filtered image saved as {output_file}")
 
 
+def calculate_similarity_measures(original_file, processed_file):
+    try:
+        original = Image.open(original_file)
+        processed = Image.open(processed_file)
+
+        original_arr = np.array(original)
+        processed_arr = np.array(processed)
+
+        # Ensure arrays are the same shape
+        if original_arr.shape != processed_arr.shape:
+            print("Original and processed images must have the same dimensions for similarity measures.")
+            return
+
+        mse = np.mean((original_arr - processed_arr) ** 2)
+        pmse = np.max(original_arr) ** 2 / mse if mse != 0 else 0
+        snr = 10 * np.log10(np.sum(original_arr ** 2) / (np.sum((original_arr - processed_arr) ** 2) + 1e-10))
+        psnr = 10 * np.log10(255 ** 2 / mse) if mse != 0 else 0
+        md = np.max(np.abs(original_arr - processed_arr))
+
+        print(f"Mean Square Error (MSE): {mse}")
+        print(f"Peak Mean Square Error (PMSE): {pmse}")
+        print(f"Signal to Noise Ratio (SNR): {snr} dB")
+        print(f"Peak Signal to Noise Ratio (PSNR): {psnr} dB")
+        print(f"Maximum Difference (MD): {md}")
+
+    except Exception as e:
+        print(f"Error occurred while calculating similarity measures: {e}")
+
 
 if args.command == 'readwrite':
     if args.input and args.output:
@@ -347,6 +380,8 @@ elif args.command == 'alpha_trimmed':
     else:
         print("Please provide input and output image files, and an alpha value")
         
+elif args.command == "evaluate":
+    calculate_similarity_measures(args.input, args.output)
 
 elif args.command == 'help':
     parser.print_help()
