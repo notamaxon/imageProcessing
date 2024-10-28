@@ -8,6 +8,10 @@ parser.add_argument('--input', type=str, help="Input BMP image file")
 parser.add_argument('--output', type=str, help="Output BMP image file")
 parser.add_argument('--brightness', type=int, help="Brightness adjustment value (positive to increase, negative to decrease)")
 parser.add_argument('--contrast', type=int, help="Contrast adjustment value (negative to decrease, positive to increase)")
+parser.add_argument('--negative', action='store_true', help="Apply negative effect")
+parser.add_argument('--hflip', action='store_true', help="Apply horizontal flip")
+parser.add_argument('--vflip', action='store_true', help="Apply vertical flip")
+parser.add_argument('--dflip', action='store_true', help="Apply diagonal flip")
 
 args = parser.parse_args()
 
@@ -84,19 +88,6 @@ def apply_negative(input_file, output_file):
     except Exception as e:
         print(f"Error occurred while applying negative: {e}")
 
-def horizontal_flip(input_file, output_file):
-    try:
-        im = Image.open(input_file)
-        arr = np.array(im)
-
-        flipped_arr = np.fliplr(arr)
-
-        new_im = Image.fromarray(flipped_arr.astype(np.uint8))
-        new_im.save(output_file)
-        print(f"Horizontal flipped image saved as {output_file}")
-
-    except Exception as e:
-        print(f"Error occurred while flipping image: {e}")
 
 def horizontal_flip(input_file, output_file):
     try:
@@ -153,6 +144,36 @@ def vertical_flip(input_file, output_file):
     except Exception as e:
         print(f"Error occurred while performing vertical flip: {e}")
 
+def diagonal_flip(input_file, output_file):
+    try:
+        im = Image.open(input_file)
+        arr = np.array(im)
+
+        if arr.ndim == 2:  # Grayscale image
+            height, width = arr.shape
+            flipped_arr = np.zeros((height, width), dtype=arr.dtype)
+            
+            for y in range(height):
+                for x in range(width):
+                    flipped_arr[height - 1 - y, width - 1 - x] = arr[y, x]
+
+        else:  # RGB or multi-channel image
+            height, width, channels = arr.shape
+            flipped_arr = np.zeros((height, width, channels), dtype=arr.dtype)
+            
+            for y in range(height):
+                for x in range(width):
+                    flipped_arr[height - 1 - y, width - 1 - x, :] = arr[y, x, :]
+
+        new_im = Image.fromarray(flipped_arr.astype(np.uint8))
+        new_im.save(output_file)
+        print(f"Diagonal (mirrored) flipped image saved as {output_file}")
+
+    except Exception as e:
+        print(f"Error occurred while performing diagonal flip: {e}")
+
+
+
 
 
 if args.command == 'readwrite':
@@ -190,6 +211,13 @@ elif args.command == 'vflip':
         vertical_flip(args.input, args.output)
     else:
         print("Please provide input and output image files")
+
+elif args.command == 'dflip':
+    if args.input and args.output:
+        diagonal_flip(args.input, args.output)
+    else:
+        print("Please provide input and output image files")
+
 
 elif args.command == 'help':
     parser.print_help()
