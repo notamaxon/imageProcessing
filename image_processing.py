@@ -12,6 +12,8 @@ parser.add_argument('--negative', action='store_true', help="Apply negative effe
 parser.add_argument('--hflip', action='store_true', help="Apply horizontal flip")
 parser.add_argument('--vflip', action='store_true', help="Apply vertical flip")
 parser.add_argument('--dflip', action='store_true', help="Apply diagonal flip")
+parser.add_argument('--shrink', type=int, help="Scale factor for shrinking the image")
+
 
 args = parser.parse_args()
 
@@ -149,7 +151,7 @@ def diagonal_flip(input_file, output_file):
         im = Image.open(input_file)
         arr = np.array(im)
 
-        if arr.ndim == 2:  # Grayscale image
+        if arr.ndim == 2:  
             height, width = arr.shape
             flipped_arr = np.zeros((height, width), dtype=arr.dtype)
             
@@ -157,7 +159,7 @@ def diagonal_flip(input_file, output_file):
                 for x in range(width):
                     flipped_arr[height - 1 - y, width - 1 - x] = arr[y, x]
 
-        else:  # RGB or multi-channel image
+        else:  
             height, width, channels = arr.shape
             flipped_arr = np.zeros((height, width, channels), dtype=arr.dtype)
             
@@ -171,6 +173,35 @@ def diagonal_flip(input_file, output_file):
 
     except Exception as e:
         print(f"Error occurred while performing diagonal flip: {e}")
+
+
+
+def shrink(input_file, output_file, scale_factor):
+    try:
+        im = Image.open(input_file)
+        arr = np.array(im)
+
+        # Calculate the new dimensions
+        new_height = arr.shape[0] // scale_factor
+        new_width = arr.shape[1] // scale_factor
+
+        # Create an empty array for the shrunken image
+        if arr.ndim == 2:  # Grayscale image
+            shrunk_arr = np.zeros((new_height, new_width), dtype=arr.dtype)
+        else:  # RGB or multi-channel image
+            shrunk_arr = np.zeros((new_height, new_width, arr.shape[2]), dtype=arr.dtype)
+
+        # Fill the shrunk array
+        for y in range(new_height):
+            for x in range(new_width):
+                shrunk_arr[y, x] = arr[y * scale_factor, x * scale_factor]
+
+        new_im = Image.fromarray(shrunk_arr.astype(np.uint8))
+        new_im.save(output_file)
+        print(f"Shrunken image saved as {output_file}")
+
+    except Exception as e:
+        print(f"Error occurred while shrinking the image: {e}")
 
 
 
@@ -217,6 +248,12 @@ elif args.command == 'dflip':
         diagonal_flip(args.input, args.output)
     else:
         print("Please provide input and output image files")
+
+elif args.command == 'shrink':
+    if args.input and args.output and args.shrink is not None:
+        shrink(args.input, args.output, args.shrink)
+    else:
+        print("Please provide input, output image files, and a scale factor")
 
 
 elif args.command == 'help':
