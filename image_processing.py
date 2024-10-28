@@ -75,8 +75,8 @@ def apply_negative(input_file, output_file):
         im = Image.open(input_file)
         arr = np.array(im)
 
-        # Perform negation for RGB images
-        arr = 255 - arr  # Invert the colors
+        
+        arr = 255 - arr  
         
         new_im = Image.fromarray(arr.astype(np.uint8))
         new_im.save(output_file)
@@ -127,6 +127,33 @@ def horizontal_flip(input_file, output_file):
     except Exception as e:
         print(f"Error occurred while performing horizontal flip: {e}")
 
+def vertical_flip(input_file, output_file):
+    try:
+        im = Image.open(input_file)
+
+        arr = np.array(im)
+
+        if arr.ndim == 2:
+            height, width = arr.shape
+            flipped_arr = np.zeros_like(arr)
+            for y in range(height):
+                flipped_arr[height - 1 - y, :] = arr[y, :]
+
+        else:  
+            height, width, channels = arr.shape
+            flipped_arr = np.zeros_like(arr)
+            for y in range(height):
+                flipped_arr[height - 1 - y, :, :] = arr[y, :, :]
+        
+        new_im = Image.fromarray(flipped_arr.astype(np.uint8))
+
+        new_im.save(output_file)
+        print(f"Vertical flipped image saved as {output_file}")
+
+    except Exception as e:
+        print(f"Error occurred while performing vertical flip: {e}")
+
+
 
 if args.command == 'readwrite':
     if args.input and args.output:
@@ -157,6 +184,12 @@ elif args.command == 'hflip':
         horizontal_flip(args.input, args.output)
     else:
         print("Please provide input and output image files") 
+
+elif args.command == 'vflip':
+    if args.input and args.output:
+        vertical_flip(args.input, args.output)
+    else:
+        print("Please provide input and output image files")
 
 elif args.command == 'help':
     parser.print_help()
