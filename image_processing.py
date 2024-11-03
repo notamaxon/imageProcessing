@@ -20,6 +20,7 @@ parser.add_argument('--pmse', action='store_true', help="Calculate Peak Mean Squ
 parser.add_argument('--snr', action='store_true', help="Calculate Signal to Noise Ratio")
 parser.add_argument('--psnr', action='store_true', help="Calculate Peak Signal to Noise Ratio")
 parser.add_argument('--md', action='store_true', help="Calculate Maximum Difference")
+parser.add_argument('--eval_all', action='store_true', help="Evaluate all metrics between input and output images")
 parser.add_argument('--q', type=float, help="Q parameter for Contraharmonic mean filter")
 
 args = parser.parse_args()
@@ -338,61 +339,44 @@ def apply_contraharmonic(input_file, output_file, Q):
     new_im.save(output_file)
     print(f"Contraharmonic mean filtered image saved as {output_file}")
 
-def calculate_similarity_measures(original_file, processed_file):
-    try:
-        original = Image.open(original_file)
-        processed = Image.open(processed_file)
+def mean_square_error(original, processed):
+    return np.mean((original - processed) ** 2, axis=(0, 1)).mean()
 
-        original_arr = np.array(original)
-        processed_arr = np.array(processed)
+def peak_mean_square_error(original, processed):
+    max_vals = np.max(original, axis=(0, 1))
+    mse = mean_square_error(original, processed)
+    return np.mean(mse / (max_vals ** 2)) if np.any(max_vals != 0) else float('inf')
 
-        # Ensure arrays are the same shape
-        if original_arr.shape != processed_arr.shape:
-            print("Original and processed images must have the same dimensions for similarity measures.")
-            return
+def signal_to_noise_ratio(original, processed):
+    signal_power = np.sum(original ** 2, axis=(0, 1))
+    noise_power = np.sum((original - processed) ** 2, axis=(0, 1))
+    return np.mean(10 * np.log10(signal_power / noise_power)) if np.all(noise_power != 0) else float('inf')
 
-        mse = np.mean((original_arr - processed_arr) ** 2)
-        pmse = np.max(original_arr) ** 2 / mse if mse != 0 else 0
-        snr = 10 * np.log10(np.sum(original_arr ** 2) / (np.sum((original_arr - processed_arr) ** 2) + 1e-10))
-        psnr = 10 * np.log10(255 ** 2 / mse) if mse != 0 else 0
-        md = np.max(np.abs(original_arr - processed_arr))
+def peak_signal_to_noise_ratio(original, processed):
+    mse_per_channel = np.mean((original - processed) ** 2, axis=(0, 1))
+    max_pixel_value = 255
+    psnr_per_channel = 10 * np.log10((max_pixel_value ** 2) / mse_per_channel)
+    return np.mean(psnr_per_channel) if np.all(mse_per_channel != 0) else float('inf')
 
-        print(f"Mean Square Error (MSE): {mse}")
-        print(f"Peak Mean Square Error (PMSE): {pmse}")
-        print(f"Signal to Noise Ratio (SNR): {snr} dB")
-        print(f"Peak Signal to Noise Ratio (PSNR): {psnr} dB")
-        print(f"Maximum Difference (MD): {md}")
+def maximum_difference(original, processed):
+    return np.max(np.abs(original - processed), axis=(0, 1))
 
-    except Exception as e:
-        print(f"Error occurred while calculating similarity measures: {e}")
-
-def calculate_similarity_measures(original_file, processed_file):
-    try:
-        original = Image.open(original_file)
-        processed = Image.open(processed_file)
-
-        original_arr = np.array(original)
-        processed_arr = np.array(processed)
-
-        # Ensure arrays are the same shape
-        if original_arr.shape != processed_arr.shape:
-            print("Original and processed images must have the same dimensions for similarity measures.")
-            return
-
-        mse = np.mean((original_arr - processed_arr) ** 2)
-        pmse = np.max(original_arr) ** 2 / mse if mse != 0 else 0
-        snr = 10 * np.log10(np.sum(original_arr ** 2) / (np.sum((original_arr - processed_arr) ** 2) + 1e-10))
-        psnr = 10 * np.log10(255 ** 2 / mse) if mse != 0 else 0
-        md = np.max(np.abs(original_arr - processed_arr))
-
-        print(f"Mean Square Error (MSE): {mse}")
-        print(f"Peak Mean Square Error (PMSE): {pmse}")
-        print(f"Signal to Noise Ratio (SNR): {snr} dB")
-        print(f"Peak Signal to Noise Ratio (PSNR): {psnr} dB")
-        print(f"Maximum Difference (MD): {md}")
-
-    except Exception as e:
-        print(f"Error occurred while calculating similarity measures: {e}")
+# Function to evaluate all metrics at once
+def evaluate_all_metrics(original_path, processed_path):
+    original = np.array(Image.open(original_path))
+    processed = np.array(Image.open(processed_path))
+    
+    mse = mean_square_error(original, processed)
+    pmse = peak_mean_square_error(original, processed)
+    snr = signal_to_noise_ratio(original, processed)
+    psnr = peak_signal_to_noise_ratio(original, processed)
+    md = maximum_difference(original, processed)
+    
+    print(f"Mean Square Error (MSE): {mse}")
+    print(f"Peak Mean Square Error (PMSE): {pmse}")
+    print(f"Signal to Noise Ratio (SNR): {snr} dB")
+    print(f"Peak Signal to Noise Ratio (PSNR): {psnr} dB")
+    print(f"Maximum Difference (MD): {md}")
 
 
 if args.command == 'readwrite':
@@ -460,10 +444,53 @@ elif args.command == 'cmean':
         apply_contraharmonic(args.input, args.output, args.q)
     else:
         print("Please provide input and output image files, and a Q value for the Contraharmonic filter")
-        
-elif args.command == "evaluate":
-    calculate_similarity_measures(args.input, args.output)
 
+elif args.command == "mse":
+    if args.input and args.output:
+        original = np.array(Image.open(args.input))
+        processed = np.array(Image.open(args.output))
+        print(f"Mean Square Error (MSE): {mean_square_error(original, processed)}")
+    else:
+        print("Please provide both input and output image files for MSE calculation.")
+
+elif args.command == "pmse":
+    if args.input and args.output:
+        original = np.array(Image.open(args.input))
+        processed = np.array(Image.open(args.output))
+        print(f"Peak Mean Square Error (PMSE): {peak_mean_square_error(original, processed)}")
+    else:
+        print("Please provide both input and output image files for PMSE calculation.")
+
+elif args.command == "snr":
+    if args.input and args.output:
+        original = np.array(Image.open(args.input))
+        processed = np.array(Image.open(args.output))
+        print(f"Signal to Noise Ratio (SNR): {signal_to_noise_ratio(original, processed)} dB")
+    else:
+        print("Please provide both input and output image files for SNR calculation.")
+
+elif args.command == "psnr":
+    if args.input and args.output:
+        original = np.array(Image.open(args.input))
+        processed = np.array(Image.open(args.output))
+        print(f"Peak Signal to Noise Ratio (PSNR): {peak_signal_to_noise_ratio(original, processed)} dB")
+    else:
+        print("Please provide both input and output image files for PSNR calculation.")
+
+elif args.command == "md":
+    if args.input and args.output:
+        original = np.array(Image.open(args.input))
+        processed = np.array(Image.open(args.output))
+        print(f"Maximum Difference (MD): {maximum_difference(original, processed)}")
+    else:
+        print("Please provide both input and output image files for MD calculation.")
+
+elif args.command == "eval_all":
+    if args.input and args.output:
+        evaluate_all_metrics(args.input, args.output)
+    else:
+        print("Please provide both input and output image files for evaluating all metrics.")
+        
 elif args.command == 'help':
     parser.print_help()
 else:
