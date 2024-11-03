@@ -22,7 +22,7 @@ parser.add_argument('--psnr', action='store_true', help="Calculate Peak Signal t
 parser.add_argument('--md', action='store_true', help="Calculate Maximum Difference")
 parser.add_argument('--eval_all', action='store_true', help="Evaluate all metrics between input and output images")
 parser.add_argument('--q', type=float, help="Q parameter for Contraharmonic mean filter")
-
+parser.add_argument('--wsize', type=int, help="Window size parameter for filters")
 args = parser.parse_args()
 
 
@@ -322,19 +322,19 @@ def contraharmonic_mean_filter(image, window_size=3, Q=1.5):
     return np.clip(output_image, 0, 255)
 
 # Function to apply Alpha-trimmed mean filter and save result
-def apply_alpha_trimmed(input_file, output_file, alpha):
+def apply_alpha_trimmed(input_file, output_file, alpha, wsize):
     im = Image.open(input_file)
     arr = np.array(im)  # Convert to grayscale
-    filtered_image = alpha_trimmed_mean_filter(arr, alpha=alpha)
+    filtered_image = alpha_trimmed_mean_filter(arr, alpha=alpha, window_size=wsize)
     new_im = Image.fromarray(filtered_image.astype(np.uint8))
     new_im.save(output_file)
     print(f"Alpha-trimmed mean filtered image saved as {output_file}")
 
 # Function to apply Contraharmonic Mean Filter and save result
-def apply_contraharmonic(input_file, output_file, Q):
+def apply_contraharmonic(input_file, output_file, Q, wsize):
     im = Image.open(input_file)
     arr = np.array(im)
-    filtered_image = contraharmonic_mean_filter(arr, Q=Q)
+    filtered_image = contraharmonic_mean_filter(arr, Q=Q, window_size=wsize)
     new_im = Image.fromarray(filtered_image.astype(np.uint8))
     new_im.save(output_file)
     print(f"Contraharmonic mean filtered image saved as {output_file}")
@@ -434,16 +434,16 @@ elif args.command == 'enlarge':
         print("Please provide input, output image files, and a scale factor for enlargement")
 
 elif args.command == 'alpha':
-    if args.input and args.output and args.alpha is not None:
-        apply_alpha_trimmed(args.input, args.output, args.alpha)
+    if args.input and args.output and args.alpha and args.wsize is not None:
+        apply_alpha_trimmed(args.input, args.output, args.alpha, args.wsize)
     else:
-        print("Please provide input and output image files, and an alpha value")
+        print("Please provide input and output image files, alpha value and window size")
 
 elif args.command == 'cmean':
-    if args.input and args.output and args.q is not None:
-        apply_contraharmonic(args.input, args.output, args.q)
+    if args.input and args.output and args.q and args.wsize is not None:
+        apply_contraharmonic(args.input, args.output, args.q, args.wsize)
     else:
-        print("Please provide input and output image files, and a Q value for the Contraharmonic filter")
+        print("Please provide input and output image files, q value and window size")
 
 elif args.command == "mse":
     if args.input and args.output:
