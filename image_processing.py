@@ -314,23 +314,24 @@ def apply_contraharmonic(input_file, output_file, Q, wsize):
     print(f"Contraharmonic mean filtered image saved as {output_file}")
 
 def mean_square_error(original, processed):
-    return np.mean((original - processed) ** 2, axis=(0, 1)).mean()
+    return np.mean(((original - processed) ** 2), axis=(0, 1)).mean()
 
 def peak_mean_square_error(original, processed):
     max_vals = np.max(original, axis=(0, 1))
     mse = mean_square_error(original, processed)
-    return np.mean(mse / (max_vals ** 2)) if np.any(max_vals != 0) else float('inf')
+    max_val = np.max(max_vals)
+    return np.mean(mse / (max_val ** 2))
 
 def signal_to_noise_ratio(original, processed):
     signal_power = np.sum(original ** 2, axis=(0, 1))
     noise_power = np.sum((original - processed) ** 2, axis=(0, 1))
-    return np.mean(10 * np.log10(signal_power / noise_power)) if np.all(noise_power != 0) else float('inf')
+    return np.mean(10 * np.log10(signal_power / noise_power))
 
 def peak_signal_to_noise_ratio(original, processed):
-    mse_per_channel = np.mean((original - processed) ** 2, axis=(0, 1))
+    mse = mean_square_error(original, processed)
     max_pixel_value = 255
-    psnr_per_channel = 10 * np.log10((max_pixel_value ** 2) / mse_per_channel)
-    return np.mean(psnr_per_channel) if np.all(mse_per_channel != 0) else float('inf')
+    psnr = 10 * np.log10((max_pixel_value ** 2) / mse)
+    return psnr
 
 def maximum_difference(original, processed):
     return np.max(np.abs(original - processed), axis=(0, 1))
@@ -352,6 +353,42 @@ def evaluate_all_metrics(original_path, processed_path):
     print(f"Peak Signal to Noise Ratio (PSNR): {psnr} dB")
     print(f"Maximum Difference (MD): {md}")
 
+
+
+def median_filter(image, window_size=5):
+    padding = window_size // 2
+    median = window_size**2 // 2
+    if image.ndim == 2: 
+        padded_image = np.pad(image, padding, mode='constant', constant_values=0)
+        output_image = np.zeros_like(image)
+        
+        for x in range(padding, padded_image.shape[0] - padding):
+            for y in range(padding, padded_image.shape[1] - padding):
+                window = padded_image[x - padding:x + padding + 1, y - padding:y + padding + 1]
+                sorted_window = np.sort(window.flatten())
+                output_image[x - padding, y - padding] = sorted_window[median]
+                
+    else:  
+        output_image = np.zeros_like(image)
+        for c in range(image.shape[2]):  
+            padded_channel = np.pad(image[:, :, c], padding, mode='constant', constant_values=0)
+            
+            for x in range(padding, padded_channel.shape[0] - padding):
+                for y in range(padding, padded_channel.shape[1] - padding):
+                    window = padded_channel[x - padding:x + padding + 1, y - padding:y + padding + 1]
+                    sorted_window = np.sort(window.flatten())
+                    output_image[x - padding, y - padding, c] = sorted_window[median]
+                    
+    return output_image
+
+# Function to apply Median Filter and save result
+def apply_median(input_file, output_file, wsize):
+    im = Image.open(input_file)
+    arr = np.array(im)  
+    filtered_image = median_filter(arr, window_size=wsize)
+    new_im = Image.fromarray(filtered_image.astype(np.uint8))
+    new_im.save(output_file)
+    print(f"Median filtered image saved as {output_file}")
 
 if args.command == 'readwrite':
     if args.input and args.output:
@@ -418,6 +455,12 @@ elif args.command == 'cmean':
         apply_contraharmonic(args.input, args.output, args.q, args.wsize)
     else:
         print("Please provide input and output image files, q value and window size")
+
+elif args.command == 'median':
+    if args.input and args.output and args.wsize is not None:
+        apply_median(args.input, args.output, args.wsize)
+    else:
+        print("Please provide input and output image files and window size")
 
 elif args.command == "mse":
     if args.input and args.output:
