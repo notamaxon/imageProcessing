@@ -313,8 +313,21 @@ def apply_contraharmonic(input_file, output_file, Q, wsize):
     new_im.save(output_file)
     print(f"Contraharmonic mean filtered image saved as {output_file}")
 
-def mean_square_error(original, processed):
-    return np.mean(((original - processed) ** 2), axis=(0, 1)).mean()
+def mean_square_error(original, processed):   
+    #return np.mean(((original - processed) ** 2), axis=(0, 1)).mean()
+    lengthX = len(original)
+    lengthY = len(processed)
+
+    summa = 0.0
+    count = 0
+    for i in range(0, lengthX):
+        for j in range(0, lengthY):
+            summa += (int(original[i][j]) - int(processed[i][j])) * (int(original[i][j]) - int(processed[i][j]))
+            count += 1
+
+    result = summa/count
+    return result
+    #return np.mean(((original_np - processed_np) ** 2), axis=(0, 1)).mean()
 
 def peak_mean_square_error(original, processed):
     max_vals = np.max(original, axis=(0, 1))
