@@ -7,6 +7,8 @@ parser.add_argument('--command', type=str, help="Command to run (e.g., histogram
 parser.add_argument('--input', type=str, help="Input BMP image file")
 parser.add_argument('--output', type=str, help="Output BMP image file")
 parser.add_argument('--channel', type=int, choices=[0, 1, 2], help="Color channel to process (0: Red, 1: Green, 2: Blue)")
+parser.add_argument("--gmin", type=float, default=0, help="Minimum brightness in output image")
+parser.add_argument("--gmax", type=float, default=255, help="Maximum brightness in output image")
 parser.add_argument('--direction', type=str, choices=['N', 'NE', 'E', 'SE'], help="Direction for linear filters")
 args = parser.parse_args()
 
@@ -40,34 +42,81 @@ def calculate_histogram(image, channel):
         return None
 
 
-def save_histogram(histogram, output_file):
+def save_histogram(histogram, output_file, channel):
     try:
+        # Max height of histogram bars and other parameters
         max_height = max(histogram)
         width = 256
         height = 200
         bar_width = 1
         scale = height / max_height
 
-        histogram_image = np.full((height, width), 255, dtype=np.uint8)
+        # Create a white background for the histogram image
+        histogram_image = np.full((height, width, 3), 255, dtype=np.uint8)
+
+        # Set color based on the channel
+        if channel == 0:  # Red channel
+            color = [255, 0, 0]
+        elif channel == 1:  # Green channel
+            color = [0, 255, 0]
+        elif channel == 2:  # Blue channel
+            color = [0, 0, 255]
+        else:
+            color = [0, 0, 0]  # Default black if something goes wrong
+
+        # Draw the histogram bars
         for x, freq in enumerate(histogram):
             bar_height = int(freq * scale)
-            histogram_image[height - bar_height:height, x * bar_width: (x + 1) * bar_width] = 0
+            histogram_image[height - bar_height:height, x * bar_width: (x + 1) * bar_width] = color
 
+        # Save the histogram image
         save_image(output_file, histogram_image)
     except Exception as e:
         print(f"Error saving histogram: {e}")
 
 
+
 # Hyperbolic histogram modification
 def hyperbolic_modification(image, channel):
-    try:
-        channel_data = image[:, :, channel]
-        modified_data = np.where(channel_data < 255, (channel_data ** 2) / (255 - channel_data + 1), 255)
-        image[:, :, channel] = np.clip(modified_data, 0, 255).astype(np.uint8)
-        return image
-    except Exception as e:
-        print(f"Error applying hyperbolic modification: {e}")
-        return image
+    # Extract the specific channel
+    channel_data = image[:, :, channel]
+    
+    # Calculate histogram
+    histogram = calculate_histogram(image, channel)
+    N = channel_data.size  # Total number of pixels
+
+    # Calculate cumulative histogram
+    cumulative_histogram = np.cumsum(histogram)
+    
+    # Automatically determine g_min and g_max
+    # g_min will be the minimum pixel value in the image
+    # g_max will be the maximum pixel value in the image
+    g_min = np.min(channel_data)
+    g_max = np.max(channel_data)
+
+    # Create output image
+    output_image = np.zeros_like(channel_data, dtype=np.float32)
+    
+    # Apply hyperbolic modification using the provided formula
+    for f in range(256):
+        # Calculate cumulative probability
+        cum_prob = cumulative_histogram[f] / N
+        
+        # Apply hyperbolic transformation
+        g_f = g_min * ((g_max / g_min) ** cum_prob)
+        
+        # Map pixels with this original value
+        output_image[channel_data == f] = g_f
+
+    # Normalize and clip the output image
+    output_image = np.clip(output_image, 0, 255).astype(np.uint8)
+    
+    # Reconstruct the full image with the modified channel
+    modified_image = image.copy()
+    modified_image[:, :, channel] = output_image
+    
+    return modified_image
+
 
 
 # Image characteristics calculation
@@ -153,10 +202,11 @@ if args.command == 'histogram':
     if args.input and args.output and args.channel is not None:
         image = read_image(args.input)
         histogram = calculate_histogram(image, args.channel)
-        save_histogram(histogram, args.output)
+        save_histogram(histogram, args.output, args.channel)
 elif args.command == 'hhyper':
     if args.input and args.output and args.channel is not None:
         image = read_image(args.input)
+        # Ensure gmin and gmax are passed to the function
         modified_image = hyperbolic_modification(image, args.channel)
         save_image(args.output, modified_image)
 elif args.command == 'image_characteristics':

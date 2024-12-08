@@ -1,6 +1,7 @@
 import argparse
 from PIL import Image
 import numpy as np
+import math
 
 parser = argparse.ArgumentParser(description="Image reading and writing tool using NumPy")
 parser.add_argument('--command', type=str, help="Command to run (e.g., readwrite, help)")
@@ -314,7 +315,6 @@ def apply_contraharmonic(input_file, output_file, Q, wsize):
     print(f"Contraharmonic mean filtered image saved as {output_file}")
 
 def mean_square_error(original, processed):   
-    #return np.mean(((original - processed) ** 2), axis=(0, 1)).mean()
     lengthX = len(original)
     lengthY = len(processed)
 
@@ -327,23 +327,44 @@ def mean_square_error(original, processed):
 
     result = summa/count
     return result
-    #return np.mean(((original_np - processed_np) ** 2), axis=(0, 1)).mean()
 
 def peak_mean_square_error(original, processed):
-    max_vals = np.max(original, axis=(0, 1))
+    lengthX = len(original)
+    lengthY = len(original[0])
+    max_val = 0
+
+    for i in range(lengthX):
+        for j in range(lengthY):
+            max_val = max(max_val, int(original[i][j]))
+
     mse = mean_square_error(original, processed)
-    max_val = np.max(max_vals)
-    return np.mean(mse / (max_val ** 2))
+    pmse = mse / (max_val ** 2)
+    return pmse
 
 def signal_to_noise_ratio(original, processed):
-    signal_power = np.sum(original ** 2, axis=(0, 1))
-    noise_power = np.sum((original - processed) ** 2, axis=(0, 1))
-    return np.mean(10 * np.log10(signal_power / noise_power))
+    signal_power = 0.0
+    noise_power = 0.0
+    lengthX = len(original)
+    lengthY = len(original[0])
+
+    for i in range(lengthX):
+        for j in range(lengthY):
+            signal_power += int(original[i][j]) ** 2
+            noise_power += (int(original[i][j]) - int(processed[i][j])) ** 2
+
+    if noise_power == 0:
+        return float('inf')  
+    snr = 10 * math.log10(signal_power / noise_power)
+    return snr
 
 def peak_signal_to_noise_ratio(original, processed):
     mse = mean_square_error(original, processed)
+    
     max_pixel_value = 255
-    psnr = 10 * np.log10((max_pixel_value ** 2) / mse)
+    if mse == 0:
+        return float('inf')
+    
+    psnr = 10 * math.log10((max_pixel_value ** 2) / mse)
     return psnr
 
 def maximum_difference(original, processed):
