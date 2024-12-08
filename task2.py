@@ -1,6 +1,7 @@
 import argparse
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+import os
 
 parser = argparse.ArgumentParser(description="Image processing tool for spatial domain operations")
 parser.add_argument('--command', type=str, help="Command to run (e.g., histogram, hhyper, image_characteristics, linear_filter, non_linear_filter)")
@@ -44,33 +45,76 @@ def calculate_histogram(image, channel):
 
 def save_histogram(histogram, output_file, channel):
     try:
-        # Max height of histogram bars and other parameters
-        max_height = max(histogram)
-        width = 256
-        height = 200
-        bar_width = 1
-        scale = height / max_height
-
-        # Create a white background for the histogram image
-        histogram_image = np.full((height, width, 3), 255, dtype=np.uint8)
-
-        # Set color based on the channel
-        if channel == 0:  # Red channel
-            color = [255, 0, 0]
-        elif channel == 1:  # Green channel
-            color = [0, 255, 0]
-        elif channel == 2:  # Blue channel
-            color = [0, 0, 255]
+        # Histogram visualization parameters
+        width = 800
+        height = 400
+        margin = 60 
+        
+        histogram_image = Image.new('RGB', (width, height), color='white')
+        draw = ImageDraw.Draw(histogram_image)
+        
+        try:
+            font = ImageFont.truetype("arial.ttf", 12)
+            title_font = ImageFont.truetype("arial.ttf", 16)
+        except IOError:
+            font = ImageFont.load_default()
+            title_font = ImageFont.load_default()
+        
+        max_frequency = max(histogram)
+        
+        if channel == 0:  
+            color = (255, 0, 0)
+            channel_name = "Red"
+        elif channel == 1:  
+            color = (0, 255, 0)
+            channel_name = "Green"
+        elif channel == 2:  
+            color = (0, 0, 255)
+            channel_name = "Blue"
         else:
-            color = [0, 0, 0]  # Default black if something goes wrong
-
-        # Draw the histogram bars
+            color = (0, 0, 0)
+            channel_name = "Unknown"
+        
+        # X-axis
+        draw.line([(margin, height - margin), (width - margin, height - margin)], fill='black', width=2)
+        # Y-axis
+        draw.line([(margin, height - margin), (margin, margin)], fill='black', width=2)
+        
+        plot_width = width - 2 * margin
+        plot_height = height - 2 * margin
+        bar_width = plot_width // 256
+        
         for x, freq in enumerate(histogram):
-            bar_height = int(freq * scale)
-            histogram_image[height - bar_height:height, x * bar_width: (x + 1) * bar_width] = color
+            scaled_height = int((freq / max_frequency) * plot_height)
+            
+            x_start = margin + x * bar_width
+            y_start = height - margin - scaled_height
+            
+            draw.rectangle([x_start, y_start, x_start + bar_width, height - margin], 
+                           fill=color, outline=color)
+        
+        x_axis_labels = [0, 51, 102, 153, 204, 255]
+        plot_width = width - 2 * margin
+        for label in x_axis_labels:
 
-        # Save the histogram image
-        save_image(output_file, histogram_image)
+            x_position = margin + (label / 255) * plot_width
+            draw.text((x_position - 10, height - margin + 10), str(label), fill='black', font=font)
+        
+        y_axis_steps = 5
+        for i in range(y_axis_steps + 1):
+            y_position = height - margin - i * (plot_height // y_axis_steps)
+            label = f"{int(max_frequency * i / y_axis_steps):,}"
+            draw.text((10, y_position - 5), label, fill='black', font=font)
+        
+        draw.text((width // 2 - 50, height - 20), "Pixel Intensity", fill='black', font=font)
+        draw.text((20, height // 2), "Frequency", fill='black', font=font, anchor='ms')
+        
+        draw.text((width // 2, 30), f"{channel_name} Channel Histogram", 
+                  fill='black', font=title_font, anchor='mt')
+        
+        histogram_image.save(output_file)
+        print(f"Histogram saved as {output_file}")
+        
     except Exception as e:
         print(f"Error saving histogram: {e}")
 
