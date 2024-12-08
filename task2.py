@@ -1,4 +1,5 @@
 import argparse
+import time
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import os
@@ -33,6 +34,7 @@ def read_image(input_file):
 
 def save_image(output_file, image_array):
     try:
+        image_array = np.clip(image_array, 0, 255)
         Image.fromarray(image_array.astype(np.uint8)).save(output_file)
         print(f"Image saved as {output_file}")
     except Exception as e:
@@ -244,33 +246,79 @@ def calculate_characteristics(image, channel):
 
 
 # Linear filtering (manual convolution implementation)
-def linear_filter(image, direction):
-    try:
-        kernel_map = {
-            'N': np.array([[-1, -1, -1], [2, 2, 2], [-1, -1, -1]]),
-            'NE': np.array([[-1, -1, 2], [-1, 2, -1], [2, -1, -1]]),
-            'E': np.array([[-1, 2, -1], [-1, 2, -1], [-1, 2, -1]]),
-            'SE': np.array([[2, -1, -1], [-1, 2, -1], [-1, -1, 2]])
-        }
-        kernel = kernel_map[direction]
-        filtered = np.zeros_like(image, dtype=np.float32)
-        for channel in range(image.shape[2]):
-            filtered[:, :, channel] = manual_convolution(image[:, :, channel], kernel)
-        return np.clip(filtered, 0, 255).astype(np.uint8)
-    except Exception as e:
-        print(f"Error applying linear filter: {e}")
-        return image
-
-
-def manual_convolution(channel_data, kernel):
+def manual_convolution(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+    """
+    Universal convolution implementation for any mask.
+    """
     kernel_height, kernel_width = kernel.shape
-    padded = np.pad(channel_data, pad_width=((1, 1), (1, 1)), mode='wrap')
-    output = np.zeros_like(channel_data, dtype=np.float32)
-    for i in range(channel_data.shape[0]):
-        for j in range(channel_data.shape[1]):
+    pad_h, pad_w = kernel_height // 2, kernel_width // 2
+    padded = np.pad(image, pad_width=((pad_h, pad_h), (pad_w, pad_w)), mode='edge')  # Edge padding
+    output = np.zeros_like(image, dtype=np.float32)
+    
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            # Extract the region of interest
             region = padded[i:i + kernel_height, j:j + kernel_width]
+            # Perform element-wise multiplication and summation
             output[i, j] = np.sum(region * kernel)
+    
     return output
+
+def optimized_edge_sharpening(image: np.ndarray) -> np.ndarray:
+    """
+    Optimized convolution for a specific edge-sharpening mask:
+    h = [[1, -2, 1], [-2, 5, -2], [1, -2, 1]]
+    """
+    kernel = np.array([[1, -2, 1],
+                       [-2, 5, -2],
+                       [1, -2, 1]], dtype=np.float32)
+    
+    kernel_height, kernel_width = kernel.shape
+    pad_h, pad_w = kernel_height // 2, kernel_width // 2
+    padded = np.pad(image, pad_width=((pad_h, pad_h), (pad_w, pad_w)), mode='edge')  # Edge padding
+    output = np.zeros_like(image, dtype=np.float32)
+    
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            # Manually compute the weighted sum for this specific mask
+            center = padded[i + 1, j + 1] * 5
+            top = padded[i, j + 1] * -2
+            bottom = padded[i + 2, j + 1] * -2
+            left = padded[i + 1, j] * -2
+            right = padded[i + 1, j + 2] * -2
+            top_left = padded[i, j]
+            top_right = padded[i, j + 2]
+            bottom_left = padded[i + 2, j]
+            bottom_right = padded[i + 2, j + 2]
+            
+            output[i, j] = (center + top + bottom + left + right +
+                            top_left + top_right + bottom_left + bottom_right)
+    
+    return output
+
+
+
+def apply_manual_convolution(input_file, output_file, kernel):
+    im = Image.open(input_file)
+    arr = np.array(im)
+    if len(arr.shape) == 3:  # Process color images
+        filtered_image = np.zeros_like(arr, dtype=np.float32)
+        for channel in range(arr.shape[2]):
+            filtered_image[:, :, channel] = manual_convolution(arr[:, :, channel], kernel)
+    else:  # Process grayscale images
+        filtered_image = manual_convolution(arr, kernel)
+    save_image(output_file, filtered_image)
+
+def apply_optimized_edge_sharpening(input_file, output_file):
+    im = Image.open(input_file)
+    arr = np.array(im)
+    if len(arr.shape) == 3:  # Process color images
+        filtered_image = np.zeros_like(arr, dtype=np.float32)
+        for channel in range(arr.shape[2]):
+            filtered_image[:, :, channel] = optimized_edge_sharpening(arr[:, :, channel])
+    else:  # Process grayscale images
+        filtered_image = optimized_edge_sharpening(arr)
+    save_image(output_file, filtered_image)
 
 
 # Non-linear filtering (Kirsch operator)
@@ -330,11 +378,16 @@ elif args.command == 'image_characteristics':
             if args.centropy:
                 print(f"Information Source Entropy: {characteristics['entropy']}")
                 
-elif args.command == 'linear_filter':
-    if args.input and args.output and args.direction:
-        image = read_image(args.input)
-        filtered_image = linear_filter(image, args.direction)
-        save_image(args.output, filtered_image)
+elif args.command == 'manual_filter':
+    if args.input and args.output:
+        # Example kernel for edge sharpening
+        universal_kernel = np.array([[0, -1, 0],
+                                     [-1, 5, -1],
+                                     [0, -1, 0]], dtype=np.float32)
+        apply_manual_convolution(args.input, args.output, universal_kernel)
+elif args.command == 'optimized_filter':
+    if args.input and args.output:
+        apply_optimized_edge_sharpening(args.input, args.output)
 elif args.command == 'non_linear_filter':
     if args.input and args.output:
         image = read_image(args.input)
