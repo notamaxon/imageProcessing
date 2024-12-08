@@ -2,6 +2,7 @@ import argparse
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import os
+import math
 
 parser = argparse.ArgumentParser(description="Image processing tool for spatial domain operations")
 parser.add_argument('--command', type=str, help="Command to run (e.g., histogram, hhyper, image_characteristics, linear_filter, non_linear_filter)")
@@ -11,6 +12,14 @@ parser.add_argument('--channel', type=int, choices=[0, 1, 2], help="Color channe
 parser.add_argument("--gmin", type=float, default=0, help="Minimum brightness in output image")
 parser.add_argument("--gmax", type=float, default=255, help="Maximum brightness in output image")
 parser.add_argument('--direction', type=str, choices=['N', 'NE', 'E', 'SE'], help="Direction for linear filters")
+parser.add_argument('--cmean', action='store_true', help="Calculate mean")
+parser.add_argument('--cvariance', action='store_true', help="Calculate variance")
+parser.add_argument('--cstdev', action='store_true', help="Calculate standard deviation")
+parser.add_argument('--cvarcoi', action='store_true', help="Calculate variation coefficient I")
+parser.add_argument('--casyco', action='store_true', help="Calculate asymmetry coefficient")
+parser.add_argument('--cflat', action='store_true', help="Calculate flattening coefficient")
+parser.add_argument('--cvarcoii', action='store_true', help="Calculate variation coefficient II")
+parser.add_argument('--centropy', action='store_true', help="Calculate information source entropy")
 args = parser.parse_args()
 
 
@@ -122,40 +131,36 @@ def save_histogram(histogram, output_file, channel):
 
 # Hyperbolic histogram modification
 def hyperbolic_modification(image, channel):
-    # Extract the specific channel
     channel_data = image[:, :, channel]
     
-    # Calculate histogram
     histogram = calculate_histogram(image, channel)
-    N = channel_data.size  # Total number of pixels
+    N = channel_data.size  
 
-    # Calculate cumulative histogram
-    cumulative_histogram = np.cumsum(histogram)
+    cumulative_histogram = np.zeros(256, dtype=np.float64)
+    cumulative_histogram[0] = histogram[0]
+    for i in range(1, 256):
+        cumulative_histogram[i] = cumulative_histogram[i-1] + histogram[i]
+
+    g_min = max(np.min(channel_data), 1)  
+    g_max = max(np.max(channel_data), g_min + 1)  
     
-    # Automatically determine g_min and g_max
-    # g_min will be the minimum pixel value in the image
-    # g_max will be the maximum pixel value in the image
-    g_min = np.min(channel_data)
-    g_max = np.max(channel_data)
-
-    # Create output image
     output_image = np.zeros_like(channel_data, dtype=np.float32)
     
-    # Apply hyperbolic modification using the provided formula
     for f in range(256):
-        # Calculate cumulative probability
+        
         cum_prob = cumulative_histogram[f] / N
         
-        # Apply hyperbolic transformation
-        g_f = g_min * ((g_max / g_min) ** cum_prob)
-        
-        # Map pixels with this original value
-        output_image[channel_data == f] = g_f
-
-    # Normalize and clip the output image
-    output_image = np.clip(output_image, 0, 255).astype(np.uint8)
+        if g_min > 0 and g_max > g_min:
+            try:
+                g_f = g_min * np.exp(np.log(g_max / g_min) * cum_prob)
+                
+                output_image[channel_data == f] = np.clip(g_f, 0, 255)
+            except Exception as e:
+                print(f"Error processing intensity {f}: {e}")
+                output_image[channel_data == f] = channel_data[channel_data == f]
     
-    # Reconstruct the full image with the modified channel
+    output_image = output_image.astype(np.uint8)
+    
     modified_image = image.copy()
     modified_image[:, :, channel] = output_image
     
@@ -163,30 +168,79 @@ def hyperbolic_modification(image, channel):
 
 
 
-# Image characteristics calculation
 def calculate_characteristics(image, channel):
     try:
-        channel_data = image[:, :, channel].astype(np.float64)
-        mean = np.mean(channel_data)
-        variance = np.var(channel_data)
-        std_dev = np.sqrt(variance)
-        coeff_variation = std_dev / mean if mean != 0 else 0
-        asymmetry = np.mean((channel_data - mean) ** 3) / (std_dev ** 3) if std_dev != 0 else 0
-        flattening = np.mean((channel_data - mean) ** 4) / (std_dev ** 4) if std_dev != 0 else 0
-        normalized = channel_data / 255
-        entropy = -np.sum(normalized * np.log2(normalized + 1e-10))
+        # Extract channel data
+        channel_data = image[:, :, channel]
+        
+        # Calculate histogram manually
+        histogram = [0] * 256
+        for row in channel_data:
+            for pixel in row:
+                histogram[pixel] += 1
+        
+        # Total number of pixels
+        N = channel_data.size
+        
+        # (C1) Mean calculation
+        mean = 0
+        for m in range(256):
+            mean += m * histogram[m]
+        mean /= N
+        
+        # (C2) Variance calculation
+        variance = 0
+        for m in range(256):
+            variance += ((m - mean) ** 2) * histogram[m]
+        variance /= N
+        
+        # Standard deviation
+        std_dev = variance ** 0.5
+        
+        # (C2) Variation Coefficient I
+        var_coeff_i = std_dev / mean if mean != 0 else 0
+        
+        # (C3) Asymmetry coefficient
+        asymmetry_coeff = 0
+        for m in range(256):
+            asymmetry_coeff += ((m - mean) ** 3) * histogram[m]
+        asymmetry_coeff /= (N * (std_dev ** 3))
+        
+        # (C4) Flattening coefficient
+        flattening_coeff = 0
+        for m in range(256):
+            flattening_coeff += ((m - mean) ** 4) * histogram[m]
+        flattening_coeff /= (N * (std_dev ** 4))
+        flattening_coeff -= 3
+        
+        # (C5) Variation Coefficient II
+        var_coeff_ii = 0
+        for m in range(256):
+            var_coeff_ii += (histogram[m] / N) ** 2
+        
+        # (C6) Information Source Entropy
+        entropy = 0
+        for m in range(256):
+            # Avoid log(0) by adding a small epsilon
+            if histogram[m] > 0:
+                prob = histogram[m] / N
+                entropy -= prob * math.log2(prob)
+        
+        # Return dictionary of characteristics
         return {
             "mean": mean,
             "variance": variance,
             "std_dev": std_dev,
-            "coeff_variation": coeff_variation,
-            "asymmetry": asymmetry,
-            "flattening": flattening,
-            "entropy": entropy,
+            "var_coeff_i": var_coeff_i,
+            "asymmetry_coeff": asymmetry_coeff,
+            "flattening_coeff": flattening_coeff,
+            "var_coeff_ii": var_coeff_ii,
+            "entropy": entropy
         }
+    
     except Exception as e:
         print(f"Error calculating characteristics: {e}")
-        return {}
+        return None
 
 
 # Linear filtering (manual convolution implementation)
@@ -257,8 +311,25 @@ elif args.command == 'image_characteristics':
     if args.input and args.channel is not None:
         image = read_image(args.input)
         characteristics = calculate_characteristics(image, args.channel)
-        for key, value in characteristics.items():
-            print(f"{key}: {value}")
+        
+        if characteristics:
+            if args.cmean:
+                print(f"Mean: {characteristics['mean']}")
+            if args.cvariance:
+                print(f"Variance: {characteristics['variance']}")
+            if args.cstdev:
+                print(f"Standard Deviation: {characteristics['std_dev']}")
+            if args.cvarcoi:
+                print(f"Variation Coefficient I: {characteristics['var_coeff_i']}")
+            if args.casyco:
+                print(f"Asymmetry Coefficient: {characteristics['asymmetry_coeff']}")
+            if args.cflat:
+                print(f"Flattening Coefficient: {characteristics['flattening_coeff']}")
+            if args.cvarcoii:
+                print(f"Variation Coefficient II: {characteristics['var_coeff_ii']}")
+            if args.centropy:
+                print(f"Information Source Entropy: {characteristics['entropy']}")
+                
 elif args.command == 'linear_filter':
     if args.input and args.output and args.direction:
         image = read_image(args.input)
