@@ -276,20 +276,36 @@ def manual_convolution(channel_data, kernel):
 # Non-linear filtering (Kirsch operator)
 def kirsch_operator(image):
     try:
+        # 8 directional kernels (full 360-degree coverage)
         kernels = [
-            np.array([[-3, -3, 5], [-3, 0, 5], [-3, -3, 5]]),  # East
-            np.array([[-3, 5, 5], [-3, 0, 5], [-3, -3, -3]]),  # North-East
-            np.array([[5, 5, 5], [-3, 0, -3], [-3, -3, -3]]),  # North
-            np.array([[5, 5, -3], [5, 0, -3], [-3, -3, -3]])   # North-West
+            np.array([[-3, -3, 5], [-3, 0, 5], [-3, -3, 5]]),    # East
+            np.array([[-3, 5, 5], [-3, 0, 5], [-3, -3, -3]]),    # North-East
+            np.array([[5, 5, 5], [-3, 0, -3], [-3, -3, -3]]),    # North
+            np.array([[5, 5, -3], [5, 0, -3], [-3, -3, -3]]),    # North-West
+            np.array([[5, -3, -3], [5, 0, -3], [5, -3, -3]]),    # West
+            np.array([[5, -3, -3], [5, 0, -3], [-3, -3, -3]]),   # South-West
+            np.array([[-3, -3, -3], [-3, 0, -3], [5, 5, 5]]),    # South
+            np.array([[-3, -3, -3], [-3, 0, 5], [-3, 5, 5]])     # South-East
         ]
+        
         filtered = np.zeros_like(image, dtype=np.float32)
+        
         for channel in range(image.shape[2]):
-            max_response = np.zeros_like(image[:, :, channel], dtype=np.float32)
+            channel_data = image[:, :, channel]
+            padded = np.pad(channel_data, pad_width=((1, 1), (1, 1)), mode='wrap')
+            max_response = np.zeros_like(channel_data, dtype=np.float32)
+            
             for kernel in kernels:
-                response = manual_convolution(image[:, :, channel], kernel)
+                # Compute convolution response
+                response = manual_convolution(channel_data, kernel)
+                
+                # More accurate implementation of the formula
                 max_response = np.maximum(max_response, response)
+            
             filtered[:, :, channel] = max_response
+        
         return np.clip(filtered, 0, 255).astype(np.uint8)
+    
     except Exception as e:
         print(f"Error applying Kirsch operator: {e}")
         return image
