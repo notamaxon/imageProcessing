@@ -264,38 +264,44 @@ def manual_convolution(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     
     return output
 
-def optimized_edge_sharpening(image: np.ndarray) -> np.ndarray:
+def optimized_extraction(image: np.ndarray) -> np.ndarray:
     """
-    Optimized convolution for a specific edge-sharpening mask:
-    h = [[1, -2, 1], [-2, 5, -2], [1, -2, 1]]
+    Optimized convolution for the extraction of details with a specific mask:
+    h = [[1, 1, 1], [-1, -2, 1], [-1, -1, 1]]
     """
-    kernel = np.array([[1, -2, 1],
-                       [-2, 5, -2],
-                       [1, -2, 1]], dtype=np.float32)
+    kernel = np.array([[1, 1, 1],
+                       [-1, -2, 1],
+                       [-1, -1, 1]], dtype=np.float32)
     
-    kernel_height, kernel_width = kernel.shape
-    pad_h, pad_w = kernel_height // 2, kernel_width // 2
-    padded = np.pad(image, pad_width=((pad_h, pad_h), (pad_w, pad_w)), mode='edge')  # Edge padding
+    # Pad the image with edge values
+    pad_h, pad_w = 1, 1  # For 3x3 kernel
+    padded = np.pad(image, pad_width=((pad_h, pad_h), (pad_w, pad_w)), mode='edge')
+    
+    # Prepare output array
     output = np.zeros_like(image, dtype=np.float32)
     
     for i in range(image.shape[0]):
         for j in range(image.shape[1]):
             # Manually compute the weighted sum for this specific mask
-            center = padded[i + 1, j + 1] * 5
-            top = padded[i, j + 1] * -2
-            bottom = padded[i + 2, j + 1] * -2
-            left = padded[i + 1, j] * -2
-            right = padded[i + 1, j + 2] * -2
-            top_left = padded[i, j]
-            top_right = padded[i, j + 2]
-            bottom_left = padded[i + 2, j]
-            bottom_right = padded[i + 2, j + 2]
-            
-            output[i, j] = (center + top + bottom + left + right +
-                            top_left + top_right + bottom_left + bottom_right)
+            # Break down each multiplication to optimize
+            output[i, j] = (
+                # Top row
+                padded[i, j] * 1 +     # top-left
+                padded[i, j+1] * 1 +   # top-center
+                padded[i, j+2] * 1 +   # top-right
+                
+                # Middle row
+                padded[i+1, j] * -1 +  # middle-left
+                padded[i+1, j+1] * -2 +# middle-center
+                padded[i+1, j+2] * 1 + # middle-right
+                
+                # Bottom row
+                padded[i+2, j] * -1 +  # bottom-left
+                padded[i+2, j+1] * -1 +# bottom-center
+                padded[i+2, j+2] * 1   # bottom-right
+            )
     
     return output
-
 
 
 def apply_manual_convolution(input_file, output_file, kernel):
@@ -309,15 +315,15 @@ def apply_manual_convolution(input_file, output_file, kernel):
         filtered_image = manual_convolution(arr, kernel)
     save_image(output_file, filtered_image)
 
-def apply_optimized_edge_sharpening(input_file, output_file):
+def apply_optimized_extraction(input_file, output_file):
     im = Image.open(input_file)
     arr = np.array(im)
     if len(arr.shape) == 3:  # Process color images
         filtered_image = np.zeros_like(arr, dtype=np.float32)
         for channel in range(arr.shape[2]):
-            filtered_image[:, :, channel] = optimized_edge_sharpening(arr[:, :, channel])
+            filtered_image[:, :, channel] = optimized_extraction(arr[:, :, channel])
     else:  # Process grayscale images
-        filtered_image = optimized_edge_sharpening(arr)
+        filtered_image = optimized_extraction(arr)
     save_image(output_file, filtered_image)
 
 
@@ -381,13 +387,13 @@ elif args.command == 'image_characteristics':
 elif args.command == 'manual_filter':
     if args.input and args.output:
         # Example kernel for edge sharpening
-        universal_kernel = np.array([[0, -1, 0],
-                                     [-1, 5, -1],
-                                     [0, -1, 0]], dtype=np.float32)
+        universal_kernel = np.array([[1, 1, 1   ],
+                                     [1, -2, 1],
+                                     [-1, -1, -1]], dtype=np.float32)
         apply_manual_convolution(args.input, args.output, universal_kernel)
 elif args.command == 'optimized_filter':
     if args.input and args.output:
-        apply_optimized_edge_sharpening(args.input, args.output)
+        apply_optimized_extraction(args.input, args.output)
 elif args.command == 'non_linear_filter':
     if args.input and args.output:
         image = read_image(args.input)
