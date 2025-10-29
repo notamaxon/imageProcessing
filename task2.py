@@ -41,7 +41,6 @@ def save_image(output_file, image_array):
         print(f"Error saving image: {e}")
 
 
-# Histogram calculation (manual implementation)
 def calculate_histogram(image, channel):
     try:
         histogram = [0] * 256
@@ -56,7 +55,6 @@ def calculate_histogram(image, channel):
 
 def save_histogram(histogram, output_file, channel):
     try:
-        # Histogram visualization parameters
         width = 800
         height = 400
         margin = 60 
@@ -86,9 +84,9 @@ def save_histogram(histogram, output_file, channel):
             color = (0, 0, 0)
             channel_name = "Unknown"
         
-        # X-axis
+
         draw.line([(margin, height - margin), (width - margin, height - margin)], fill='black', width=2)
-        # Y-axis
+
         draw.line([(margin, height - margin), (margin, margin)], fill='black', width=2)
         
         plot_width = width - 2 * margin
@@ -131,7 +129,7 @@ def save_histogram(histogram, output_file, channel):
 
 
 
-# Hyperbolic histogram modification
+
 def hyperbolic_modification(image, channel):
     channel_data = image[:, :, channel]
     
@@ -172,63 +170,50 @@ def hyperbolic_modification(image, channel):
 
 def calculate_characteristics(image, channel):
     try:
-        # Extract channel data
         channel_data = image[:, :, channel]
         
-        # Calculate histogram manually
         histogram = [0] * 256
         for row in channel_data:
             for pixel in row:
                 histogram[pixel] += 1
         
-        # Total number of pixels
         N = channel_data.size
         
-        # (C1) Mean calculation
         mean = 0
         for m in range(256):
             mean += m * histogram[m]
         mean /= N
         
-        # (C2) Variance calculation
         variance = 0
         for m in range(256):
             variance += ((m - mean) ** 2) * histogram[m]
         variance /= N
         
-        # Standard deviation
         std_dev = variance ** 0.5
         
-        # (C2) Variation Coefficient I
         var_coeff_i = std_dev / mean if mean != 0 else 0
         
-        # (C3) Asymmetry coefficient
         asymmetry_coeff = 0
         for m in range(256):
             asymmetry_coeff += ((m - mean) ** 3) * histogram[m]
         asymmetry_coeff /= (N * (std_dev ** 3))
         
-        # (C4) Flattening coefficient
         flattening_coeff = 0
         for m in range(256):
             flattening_coeff += ((m - mean) ** 4) * histogram[m]
         flattening_coeff /= (N * (std_dev ** 4))
         flattening_coeff -= 3
         
-        # (C5) Variation Coefficient II
         var_coeff_ii = 0
         for m in range(256):
             var_coeff_ii += (histogram[m] / N) ** 2
         
-        # (C6) Information Source Entropy
         entropy = 0
         for m in range(256):
-            # Avoid log(0) by adding a small epsilon
             if histogram[m] > 0:
                 prob = histogram[m] / N
                 entropy -= prob * math.log2(prob)
         
-        # Return dictionary of characteristics
         return {
             "mean": mean,
             "variance": variance,
@@ -245,21 +230,18 @@ def calculate_characteristics(image, channel):
         return None
 
 
-# Linear filtering (manual convolution implementation)
 def manual_convolution(image: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     """
     Universal convolution implementation for any mask.
     """
     kernel_height, kernel_width = kernel.shape
     pad_h, pad_w = kernel_height // 2, kernel_width // 2
-    padded = np.pad(image, pad_width=((pad_h, pad_h), (pad_w, pad_w)), mode='edge')  # Edge padding
+    padded = np.pad(image, pad_width=((pad_h, pad_h), (pad_w, pad_w)), mode='edge')
     output = np.zeros_like(image, dtype=np.float32)
     
     for i in range(image.shape[0]):
         for j in range(image.shape[1]):
-            # Extract the region of interest
             region = padded[i:i + kernel_height, j:j + kernel_width]
-            # Perform element-wise multiplication and summation
             output[i, j] = np.sum(region * kernel)
     
     return output
@@ -273,32 +255,26 @@ def optimized_extraction(image: np.ndarray) -> np.ndarray:
                        [-1, -2, 1],
                        [-1, -1, 1]], dtype=np.float32)
     
-    # Pad the image with edge values
-    pad_h, pad_w = 1, 1  # For 3x3 kernel
+
+    pad_h, pad_w = 1, 1 
     padded = np.pad(image, pad_width=((pad_h, pad_h), (pad_w, pad_w)), mode='edge')
     
-    # Prepare output array
     output = np.zeros_like(image, dtype=np.float32)
     
     for i in range(image.shape[0]):
         for j in range(image.shape[1]):
-            # Manually compute the weighted sum for this specific mask
-            # Break down each multiplication to optimize
             output[i, j] = (
-                # Top row
-                padded[i, j] * 1 +     # top-left
-                padded[i, j+1] * 1 +   # top-center
-                padded[i, j+2] * 1 +   # top-right
+                padded[i, j] * 1 +  
+                padded[i, j+1] * 1 +  
+                padded[i, j+2] * 1 + 
                 
-                # Middle row
-                padded[i+1, j] * -1 +  # middle-left
-                padded[i+1, j+1] * -2 +# middle-center
-                padded[i+1, j+2] * 1 + # middle-right
+                padded[i+1, j] * -1 +  
+                padded[i+1, j+1] * -2 +
+                padded[i+1, j+2] * 1 + 
                 
-                # Bottom row
-                padded[i+2, j] * -1 +  # bottom-left
-                padded[i+2, j+1] * -1 +# bottom-center
-                padded[i+2, j+2] * 1   # bottom-right
+                padded[i+2, j] * -1 +  
+                padded[i+2, j+1] * -1 +
+                padded[i+2, j+2] * 1 
             )
     
     return output
@@ -307,39 +283,38 @@ def optimized_extraction(image: np.ndarray) -> np.ndarray:
 def apply_manual_convolution(input_file, output_file, kernel):
     im = Image.open(input_file)
     arr = np.array(im)
-    if len(arr.shape) == 3:  # Process color images
+    if len(arr.shape) == 3:
         filtered_image = np.zeros_like(arr, dtype=np.float32)
         for channel in range(arr.shape[2]):
             filtered_image[:, :, channel] = manual_convolution(arr[:, :, channel], kernel)
-    else:  # Process grayscale images
+    else:
         filtered_image = manual_convolution(arr, kernel)
     save_image(output_file, filtered_image)
 
 def apply_optimized_extraction(input_file, output_file):
     im = Image.open(input_file)
     arr = np.array(im)
-    if len(arr.shape) == 3:  # Process color images
+    if len(arr.shape) == 3: 
         filtered_image = np.zeros_like(arr, dtype=np.float32)
         for channel in range(arr.shape[2]):
             filtered_image[:, :, channel] = optimized_extraction(arr[:, :, channel])
-    else:  # Process grayscale images
+    else: 
         filtered_image = optimized_extraction(arr)
     save_image(output_file, filtered_image)
 
 
-# Non-linear filtering (Kirsch operator)
+
 def kirsch_operator(image):
     try:
-        # 8 directional kernels (full 360-degree coverage)
         kernels = [
-            np.array([[-3, -3, 5], [-3, 0, 5], [-3, -3, 5]]),    # East
-            np.array([[-3, 5, 5], [-3, 0, 5], [-3, -3, -3]]),    # North-East
-            np.array([[5, 5, 5], [-3, 0, -3], [-3, -3, -3]]),    # North
-            np.array([[5, 5, -3], [5, 0, -3], [-3, -3, -3]]),    # North-West
-            np.array([[5, -3, -3], [5, 0, -3], [5, -3, -3]]),    # West
-            np.array([[5, -3, -3], [5, 0, -3], [-3, -3, -3]]),   # South-West
-            np.array([[-3, -3, -3], [-3, 0, -3], [5, 5, 5]]),    # South
-            np.array([[-3, -3, -3], [-3, 0, 5], [-3, 5, 5]])     # South-East
+            np.array([[-3, -3, 5], [-3, 0, 5], [-3, -3, 5]]),    
+            np.array([[-3, 5, 5], [-3, 0, 5], [-3, -3, -3]]),   
+            np.array([[5, 5, 5], [-3, 0, -3], [-3, -3, -3]]),   
+            np.array([[5, 5, -3], [5, 0, -3], [-3, -3, -3]]),
+            np.array([[5, -3, -3], [5, 0, -3], [5, -3, -3]]),
+            np.array([[5, -3, -3], [5, 0, -3], [-3, -3, -3]]),
+            np.array([[-3, -3, -3], [-3, 0, -3], [5, 5, 5]]), 
+            np.array([[-3, -3, -3], [-3, 0, 5], [-3, 5, 5]])
         ]
         
         filtered = np.zeros_like(image, dtype=np.float32)
@@ -350,10 +325,8 @@ def kirsch_operator(image):
             max_response = np.zeros_like(channel_data, dtype=np.float32)
             
             for kernel in kernels:
-                # Compute convolution response
                 response = manual_convolution(channel_data, kernel)
                 
-                # More accurate implementation of the formula
                 max_response = np.maximum(max_response, response)
             
             filtered[:, :, channel] = max_response
@@ -364,8 +337,31 @@ def kirsch_operator(image):
         print(f"Error applying Kirsch operator: {e}")
         return image
 
+def sobel_operator(image):
+    kernel_x = np.array([[-1, 0, 1],
+                         [-2, 0, 2],
+                         [-1, 0, 1]], dtype=np.float32)
+    
+    kernel_y = np.array([[-1, -2, -1],
+                         [ 0,  0,  0],
+                         [ 1,  2,  1]], dtype=np.float32)
 
-# Command handling
+    rows, cols = image.shape
+    filteredImage = np.zeros((rows, cols), dtype=np.float32)
+
+    for i in range(1, rows - 1):
+        for j in range(1, cols - 1):
+            region = image[i-1:i+2, j-1:j+2]
+
+            x_gradient = np.sum(kernel_x * region)
+            y_gradient = np.sum(kernel_y * region)
+
+            filteredImage[i, j] = math.sqrt(x_gradient**2 + y_gradient**2)
+
+    return np.clip(filteredImage, 0, 255).astype(np.uint8)
+
+
+
 if args.command == 'histogram':
     if args.input and args.output and args.channel is not None:
         image = read_image(args.input)
@@ -374,7 +370,6 @@ if args.command == 'histogram':
 elif args.command == 'hhyper':
     if args.input and args.output and args.channel is not None:
         image = read_image(args.input)
-        # Ensure gmin and gmax are passed to the function
         modified_image = hyperbolic_modification(image, args.channel)
         save_image(args.output, modified_image)
 elif args.command == 'image_characteristics':
@@ -402,7 +397,6 @@ elif args.command == 'image_characteristics':
                 
 elif args.command == 'manual_filter':
     if args.input and args.output:
-        # Example kernel for edge sharpening
         universal_kernel = np.array([[1, 1, 1   ],
                                      [1, -2, 1],
                                      [-1, -1, -1]], dtype=np.float32)
@@ -414,6 +408,11 @@ elif args.command == 'non_linear_filter':
     if args.input and args.output:
         image = read_image(args.input)
         filtered_image = kirsch_operator(image)
+        save_image(args.output, filtered_image)
+elif args.command == 'osobel':
+    if args.input and args.output:
+        image = read_image(args.input)
+        filtered_image = sobel_operator(image)
         save_image(args.output, filtered_image)
 else:
     print("Invalid command or missing parameters. Use --help for usage information.")
