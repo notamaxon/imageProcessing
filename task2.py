@@ -84,28 +84,27 @@ def save_histogram(histogram, output_file, channel):
             color = (0, 0, 0)
             channel_name = "Unknown"
         
-
         draw.line([(margin, height - margin), (width - margin, height - margin)], fill='black', width=2)
-
         draw.line([(margin, height - margin), (margin, margin)], fill='black', width=2)
         
         plot_width = width - 2 * margin
         plot_height = height - 2 * margin
-        bar_width = plot_width // 256
-        
+        bar_width = plot_width / 256  #float division for accuracy
+
         for x, freq in enumerate(histogram):
             scaled_height = int((freq / max_frequency) * plot_height)
-            
-            x_start = margin + x * bar_width
-            y_start = height - margin - scaled_height
-            
-            draw.rectangle([x_start, y_start, x_start + bar_width, height - margin], 
-                           fill=color, outline=color)
-        
-        x_axis_labels = [0, 51, 102, 153, 204, 255]
-        plot_width = width - 2 * margin
-        for label in x_axis_labels:
 
+            # Center bars correctly around their pixel intensity
+            x_center = margin + (x / 255) * plot_width
+            x_start = int(round(x_center - bar_width / 2))
+            x_end = int(round(x_center + bar_width / 2))
+            y_start = height - margin - scaled_height
+
+            draw.rectangle([x_start, y_start, x_end, height - margin],
+                           fill=color, outline=color)
+            
+        x_axis_labels = [0, 51, 102, 153, 204, 255]
+        for label in x_axis_labels:
             x_position = margin + (label / 255) * plot_width
             draw.text((x_position - 10, height - margin + 10), str(label), fill='black', font=font)
         
@@ -117,9 +116,7 @@ def save_histogram(histogram, output_file, channel):
         
         draw.text((width // 2 - 50, height - 20), "Pixel Intensity", fill='black', font=font)
         draw.text((20, height // 2), "Frequency", fill='black', font=font, anchor='ms')
-        
-        draw.text((width // 2, 30), f"{channel_name} Channel Histogram", 
-                  fill='black', font=title_font, anchor='mt')
+        draw.text((width // 2, 30), f"{channel_name} Channel Histogram", fill='black', font=title_font, anchor='mt')
         
         histogram_image.save(output_file)
         print(f"Histogram saved as {output_file}")
