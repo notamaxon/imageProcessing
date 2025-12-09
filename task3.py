@@ -6,18 +6,14 @@ import sys
 
 parser = argparse.ArgumentParser(description="Image processing tool: Morphology and Segmentation")
 
-# General Arguments
 parser.add_argument('--command', type=str, required=True, 
                     help="Command to run: dilation, erosion, opening, closing, hmt, m6, region_growing")
 parser.add_argument('--input', type=str, required=True, help="Input BMP image file")
 parser.add_argument('--output', type=str, required=True, help="Output BMP image file")
 
-# Morphology Arguments
-parser.add_argument('--se_shape', type=str, default='cross', choices=['cross', 'square'], 
-                    help="Shape of the basic structural element")
-parser.add_argument('--se_size', type=int, default=3, help="Size of the structural element (e.g., 3 for 3x3)")
+parser.add_argument('--se', type=str, default='iii', 
+                    help="Structural element identifier (e.g., 'iii', 'xi_1', 'xii_3')")
 
-# Segmentation Arguments
 parser.add_argument('--seed_x', type=int, help="X coordinate for seed point")
 parser.add_argument('--seed_y', type=int, help="Y coordinate for seed point")
 parser.add_argument('--threshold', type=int, default=10, help="Threshold for region growing")
@@ -25,30 +21,21 @@ parser.add_argument('--threshold', type=int, default=10, help="Threshold for reg
 args = parser.parse_args()
 
 
-# --- IO Functions with Error Handling ---
-
 def read_image(input_file, as_binary=False):
     try:
-        # Convert to Grayscale
         img = Image.open(input_file).convert('L')
         arr = np.array(img)
-        
         if as_binary:
-            # Threshold: everything > 127 becomes 1, else 0
             arr = (arr > 127).astype(np.uint8)
-            
         return arr
     except Exception as e:
         print(f"Error reading image: {e}")
         return None
 
-
 def save_image(output_file, image_array, is_binary=False):
     try:
-        # If binary (0/1), scale to 0/255 for visibility
         if is_binary:
             image_array = image_array * 255
-            
         image_array = np.clip(image_array, 0, 255).astype(np.uint8)
         Image.fromarray(image_array).save(output_file)
         print(f"Image saved as {output_file}")
@@ -56,39 +43,144 @@ def save_image(output_file, image_array, is_binary=False):
         print(f"Error saving image: {e}")
 
 
-def get_structural_element(shape, size):
-    """ Generates the mask (SE) for basic operations """
-    if size % 2 == 0:
-        size += 1 
+def get_structural_element(name):
+    masks = {
+        'i': np.array([
+            [ 0, 0, 0],
+            [ 0,  1, 1],
+            [ 0, 0, 0]
+        ], dtype=np.int8),
+        'ii': np.array([
+            [ 0, 0, 0],
+            [ 0,  1, 0],
+            [ 0, 1, 0]
+        ], dtype=np.int8),
+        'iii': np.array([
+            [ 1, 1, 1],
+            [ 1, 1, 1],
+            [ 1, 1, 1]
+        ], dtype=np.int8),
+        'iv': np.array([
+            [ 0, 1, 0],
+            [ 1,  1, 1],
+            [ 0, 1, 0]
+        ], dtype=np.int8),
+        'v': np.array([
+            [ 0, 0, 0],
+            [ 0,  1, 1],
+            [ 0, 1, 0]
+        ], dtype=np.int8),
+        'vi': np.array([
+            [ 0, 0, 0],
+            [ 0,  0, 1],
+            [ 0, 1, 0]
+        ], dtype=np.int8),
+        'vii': np.array([
+            [ 0, 0, 0],
+            [ 1, 1, 1],
+            [ 0, 0, 0]
+        ], dtype=np.int8),
+        'viii': np.array([
+            [ 0, 0, 0],
+            [ 1, 0, 1],
+            [ 0, 0, 0]
+        ], dtype=np.int8),
+        'ix': np.array([
+            [ 0, 0, 0],
+            [ 1, 1, 0],
+            [ 1, 0, 0]
+        ], dtype=np.int8),
+        'x': np.array([
+            [ 0, 1, 1],
+            [ 0, 1, 0],
+            [ 0, 0, 0]
+        ], dtype=np.int8),
+
+        'xi_1': np.array([
+            [ 1, -1, -1],
+            [ 1,  0, -1],
+            [ 1, -1, -1]
+        ], dtype=np.int8),
+        'xi_2': np.array([
+            [ 1,  1,  1],
+            [ -1,  0, -1],
+            [ -1,  -1, -1]
+        ], dtype=np.int8),
+        'xi_3': np.array([
+            [ -1,  -1,  1],
+            [ -1,  0,  1],
+            [-1, -1, 1]
+        ], dtype=np.int8),
+        'xi_4': np.array([
+            [-1,  -1,  -1],
+            [-1,  0,  -1],
+            [1,  1,  1]
+        ], dtype=np.int8),
+
+        'xii_1': np.array([
+            [ 0,  0,  0],
+            [-1, 1, -1],
+            [ 1,  1,  1]
+        ], dtype=np.int8),
+        'xii_2': np.array([
+            [-1,  0,  0],
+            [ 1, 1,  0],
+            [ 1,  1, -1]
+        ], dtype=np.int8),
+        'xii_3': np.array([
+            [ 1, -1,  0],
+            [ 1, 1,  0],
+            [ 1, -1,  0]
+        ], dtype=np.int8),
+        'xii_4': np.array([
+            [ 1,  1, -1],
+            [ 1, 1,  0],
+            [-1,  0,  0]
+        ], dtype=np.int8),
+        'xii_5': np.array([
+            [ 1,  1,  1],
+            [-1, 1, -1],
+            [ 0,  0,  0]
+        ], dtype=np.int8),
+        'xii_6': np.array([
+            [-1,  1,  1],
+            [ 0, 1,  1],
+            [ 0,  0, -1]
+        ], dtype=np.int8),
+        'xii_7': np.array([
+            [ 0, -1,  1],
+            [ 0, 1,  1],
+            [ 0, -1,  1]
+        ], dtype=np.int8),
+        'xii_8': np.array([
+            [ 0,  0, -1],
+            [ 0, 1,  1],
+            [-1,  1,  1]
+        ], dtype=np.int8)
+    }
+
+    if name not in masks:
+        print(f"Error: Structural element '{name}' not defined.")
+        sys.exit(1)
         
-    se = np.zeros((size, size), dtype=np.uint8)
-    center = size // 2
-    
-    if shape == 'square':
-        se[:] = 1
-    elif shape == 'cross':
-        se[center, :] = 1
-        se[:, center] = 1
-        
-    return se
+    return masks[name]
 
 
-# --- Morphological Operations ---
 
 def dilation(image, se):
     h, w = image.shape
     se_h, se_w = se.shape
     pad_h, pad_w = se_h // 2, se_w // 2
     
-    # Pad with 0 (Background)
     padded = np.pad(image, ((pad_h, pad_h), (pad_w, pad_w)), mode='constant', constant_values=0)
     output = np.zeros_like(image)
+    
+    se_mask = (se == 1)
     
     for i in range(h):
         for j in range(w):
             roi = padded[i:i+se_h, j:j+se_w]
-            # If any pixel overlaps, set to 1
-            if np.sum(roi * se) > 0:
+            if np.sum(roi[se_mask]) > 0:
                 output[i, j] = 1
     return output
 
@@ -98,17 +190,16 @@ def erosion(image, se):
     se_h, se_w = se.shape
     pad_h, pad_w = se_h // 2, se_w // 2
     
-    # Pad with 1 (Foreground)
     padded = np.pad(image, ((pad_h, pad_h), (pad_w, pad_w)), mode='constant', constant_values=1)
     output = np.zeros_like(image)
     
-    se_sum = np.sum(se)
+    se_mask = (se == 1)
+    target_sum = np.sum(se_mask) 
     
     for i in range(h):
         for j in range(w):
             roi = padded[i:i+se_h, j:j+se_w]
-            # If fit is perfect, set to 1
-            if np.sum(roi * se) == se_sum:
+            if np.sum(roi[se_mask]) == target_sum:
                 output[i, j] = 1
     return output
 
@@ -121,104 +212,75 @@ def closing(image, se):
     return erosion(dilation(image, se), se)
 
 
-def hit_or_miss(image, b_fg, b_bg):
-    match_fg = erosion(image, b_fg)
-    
-    image_inv = 1 - image
-    match_bg = erosion(image_inv, b_bg)
+def erosion_mask(image, mask):
+    h, w = image.shape
+    se_h, se_w = mask.shape
+    pad_h, pad_w = se_h // 2, se_w // 2
 
-    return match_fg & match_bg
+    if np.sum(mask) == 0:
+        return image.copy()
+
+    padded = np.pad(image, ((pad_h, pad_h), (pad_w, pad_w)),
+                    mode='constant', constant_values=1)
+
+    out = np.zeros_like(image, dtype=np.uint8)
+    required = np.sum(mask)
+
+    for i in range(h):
+        for j in range(w):
+            roi = padded[i:i+se_h, j:j+se_w]
+            if roi[mask].sum() == required:
+                out[i, j] = 1
+    return out
 
 
-# --- Task M6: Thickening Implementation ---
+def hit_or_miss(image, se):
+    A = (image > 0).astype(np.uint8)
 
-def get_golay_masks_m6():
-    """
-    Generates the 8 structural elements for Task M6.
-    Based on (xii) but 1 and 0 are swapped.
-    """
-    masks = []
-    
-    # Base "North" Mask (Swapped values from standard thinning)
-    # Original (xii) North: Top=0, Bottom=1
-    # Swapped for M6: Top=1 (FG), Bottom=0 (BG), Middle=Don't Care
-    
-    # 1 = Must be White
-    # 0 = Must be Black
-    # -1 = Don't Care
-    
-    base_mask = np.array([
-        [ 1,  1,  1],
-        [-1, -1, -1],
-        [ 0,  0,  0]
-    ], dtype=np.int8)
+    B1_mask = (se == 1) 
+    B2_mask = (se == 0) 
 
-    # Base "North-East" Mask
-    mask_ne = np.array([
-        [-1,  1,  1],
-        [ 0, -1,  1],
-        [ 0,  0, -1]
-    ], dtype=np.int8)
+    er1 = erosion_mask(A, B1_mask)
 
-    raw_masks = []
-    
-    # Generate N, E, S, W rotations
-    curr = base_mask
-    for _ in range(4):
-        raw_masks.append(curr)
-        curr = np.rot90(curr, -1) # 90 deg clockwise
-        
-    # Generate NE, SE, SW, NW rotations
-    curr = mask_ne
-    for _ in range(4):
-        raw_masks.append(curr)
-        curr = np.rot90(curr, -1)
-        
-    # Reorder to N, NE, E, SE, S, SW, W, NW
-    ordered_masks = [
-        raw_masks[0], raw_masks[4], raw_masks[1], raw_masks[5],
-        raw_masks[2], raw_masks[6], raw_masks[3], raw_masks[7]
-    ]
+    A_comp = 1 - A
+    er2 = erosion_mask(A_comp, B2_mask)
 
-    # Convert to (FG, BG) pairs for Hit-Or-Miss
-    for m in ordered_masks:
-        fg = (m == 1).astype(np.uint8)
-        bg = (m == 0).astype(np.uint8)
-        masks.append((fg, bg))
-        
-    return masks
+    return (er1 & er2).astype(np.uint8)
 
-def m6_thickening(image):
-    """
-    Iterative thickening.
-    C(A, B) = A U (A HMT B) for all 8 masks until convergence.
-    """
-    masks = get_golay_masks_m6()
-    current_image = image.copy()
+
+def m6(image, get_structural_element_fn):
+    mask_names = ['xii_1', 'xii_2', 'xii_3', 'xii_4', 'xii_5', 'xii_6', 'xii_7', 'xii_8']
+
+    current = image.copy().astype(np.uint8)
+
     iteration = 0
-    
     while True:
         iteration += 1
-        previous_image = current_image.copy()
-        
-        for (b_fg, b_bg) in masks:
-            # 1. Find pixels that match the pattern
-            hmt_res = hit_or_miss(current_image, b_fg, b_bg)
-            
-            # 2. Union with original (Add pixels)
-            current_image = current_image | hmt_res
-            
-        # Check if image stopped changing
-        if np.array_equal(current_image, previous_image):
-            print(f"M6 Converged after {iteration} iterations.")
+        prev = current.copy()
+
+        for name in mask_names:
+            base = get_structural_element_fn(name).copy()
+
+            swapped = base.copy()
+            tmp = swapped.copy()
+            tmp[base == 1] = 0
+            tmp[base == 0] = 1
+            tmp[base == -1] = -1
+            swapped = tmp
+
+            hmt_res = hit_or_miss(current, swapped)
+
+            current = (current | hmt_res).astype(np.uint8)
+
+        if np.array_equal(current, prev):
             break
-            
-    return current_image
+
+    return current
 
 
-# --- Main Execution Block ---
+morphology_cmds = ['dilation', 'erosion', 'opening', 'closing', 'hmt', 'm6']
 
-if args.command in ['dilation', 'erosion', 'opening', 'closing', 'hmt', 'm6']:
+if args.command in morphology_cmds:
     image = read_image(args.input, as_binary=True)
     if image is None: sys.exit(1)
     
@@ -226,32 +288,28 @@ if args.command in ['dilation', 'erosion', 'opening', 'closing', 'hmt', 'm6']:
     output_image = None
     
     if args.command == 'dilation':
-        se = get_structural_element(args.se_shape, args.se_size)
+        se = get_structural_element(args.se)
         output_image = dilation(image, se)
 
     elif args.command == 'erosion':
-        se = get_structural_element(args.se_shape, args.se_size)
+        se = get_structural_element(args.se)
         output_image = erosion(image, se)
 
     elif args.command == 'opening':
-        se = get_structural_element(args.se_shape, args.se_size)
+        se = get_structural_element(args.se)
         output_image = opening(image, se)
 
     elif args.command == 'closing':
-        se = get_structural_element(args.se_shape, args.se_size)
+        se = get_structural_element(args.se)
         output_image = closing(image, se)
 
     elif args.command == 'hmt':
-        # Demo: Corner detection
-        # FG: Center and Right are 1
-        b_fg = np.array([[0, 0, 0], [0, 1, 1], [0, 1, 0]], dtype=np.uint8)
-        # BG: Left is 0
-        b_bg = np.array([[0, 0, 0], [1, 0, 0], [0, 0, 0]], dtype=np.uint8)
-        output_image = hit_or_miss(image, b_fg, b_bg)
+        se = get_structural_element(args.se)
+        output_image = hit_or_miss(image, se)
         
     elif args.command == 'm6':
-        print("Running M6: Thickening...")
-        output_image = m6_thickening(image)
+        print("Running M6: Thickening with SE (xii)...")
+        output_image = m6(image, get_structural_element)
 
     end = time.time()
     print(f"Time: {end - start:.4f}s")
@@ -260,19 +318,14 @@ if args.command in ['dilation', 'erosion', 'opening', 'closing', 'hmt', 'm6']:
         save_image(args.output, output_image, is_binary=True)
 
 elif args.command == 'region_growing':
-    # Load as Grayscale (NOT binary)
     image = read_image(args.input, as_binary=False)
     if image is None: sys.exit(1)
 
     start = time.time()
-    
-    # Placeholder for R1
     print("Region growing not implemented yet")
-    output_image = image # Just pass through for now
-    
+    output_image = image 
     end = time.time()
-    print(f"Time: {end - start:.4f}s")
     save_image(args.output, output_image, is_binary=False)
 
 else:
-    print("Invalid command. Use --help.")
+    print("Invalid command.")
