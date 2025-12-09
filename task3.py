@@ -169,39 +169,32 @@ def get_structural_element(name):
 
 def dilation(image, se):
     h, w = image.shape
-    se_h, se_w = se.shape
-    pad_h, pad_w = se_h // 2, se_w // 2
-    
-    padded = np.pad(image, ((pad_h, pad_h), (pad_w, pad_w)), mode='constant', constant_values=0)
-    output = np.zeros_like(image)
-    
-    se_mask = (se == 1)
-    
+    sh, sw = se.shape
+    ph, pw = sh//2, sw//2
+    padded = np.pad(image, ((ph,ph),(pw,pw)), mode='constant', constant_values=0)
+    out = np.zeros_like(image)
+    mask = (se==1)
     for i in range(h):
         for j in range(w):
-            roi = padded[i:i+se_h, j:j+se_w]
-            if np.sum(roi[se_mask]) > 0:
-                output[i, j] = 1
-    return output
-
+            roi = padded[i:i+sh, j:j+sw]
+            if np.sum(roi[mask])>0:
+                out[i,j]=1
+    return out
 
 def erosion(image, se):
     h, w = image.shape
-    se_h, se_w = se.shape
-    pad_h, pad_w = se_h // 2, se_w // 2
-    
-    padded = np.pad(image, ((pad_h, pad_h), (pad_w, pad_w)), mode='constant', constant_values=1)
-    output = np.zeros_like(image)
-    
-    se_mask = (se == 1)
-    target_sum = np.sum(se_mask) 
-    
+    sh, sw = se.shape
+    ph, pw = sh//2, sw//2
+    padded = np.pad(image, ((ph,ph),(pw,pw)), mode='constant', constant_values=1)
+    out = np.zeros_like(image)
+    mask = (se==1)
+    req = np.sum(mask)
     for i in range(h):
         for j in range(w):
-            roi = padded[i:i+se_h, j:j+se_w]
-            if np.sum(roi[se_mask]) == target_sum:
-                output[i, j] = 1
-    return output
+            roi = padded[i:i+sh, j:j+sw]
+            if np.sum(roi[mask])==req:
+                out[i,j]=1
+    return out
 
 
 def opening(image, se):
@@ -235,46 +228,29 @@ def erosion_mask(image, mask):
 
 
 def hit_or_miss(image, se):
-    A = (image > 0).astype(np.uint8)
-
-    B1_mask = (se == 1) 
-    B2_mask = (se == 0) 
-
-    er1 = erosion_mask(A, B1_mask)
-
-    A_comp = 1 - A
-    er2 = erosion_mask(A_comp, B2_mask)
-
+    A=(image>0).astype(np.uint8)
+    B1=(se==1)
+    B2=(se==0)
+    er1=erosion_mask(A,B1)
+    Acomp=1-A
+    er2=erosion_mask(Acomp,B2)
     return (er1 & er2).astype(np.uint8)
 
-
-def m6(image, get_structural_element_fn):
-    mask_names = ['xii_1', 'xii_2', 'xii_3', 'xii_4', 'xii_5', 'xii_6', 'xii_7', 'xii_8']
-
-    current = image.copy().astype(np.uint8)
-
-    iteration = 0
+def m6(image, get_se):
+    names=['xii_1','xii_2','xii_3','xii_4','xii_5','xii_6','xii_7','xii_8']
+    current=image.copy().astype(np.uint8)
     while True:
-        iteration += 1
-        prev = current.copy()
-
-        for name in mask_names:
-            base = get_structural_element_fn(name).copy()
-
-            swapped = base.copy()
-            tmp = swapped.copy()
-            tmp[base == 1] = 0
-            tmp[base == 0] = 1
-            tmp[base == -1] = -1
-            swapped = tmp
-
-            hmt_res = hit_or_miss(current, swapped)
-
-            current = (current | hmt_res).astype(np.uint8)
-
-        if np.array_equal(current, prev):
+        prev=current.copy()
+        for name in names:
+            base=get_se(name)
+            tmp=base.copy()
+            tmp[base==1]=0
+            tmp[base==0]=1
+            tmp[base==-1]=-1
+            res=hit_or_miss(current,tmp)
+            current=(current|res).astype(np.uint8)
+        if np.array_equal(current,prev):
             break
-
     return current
 
 
