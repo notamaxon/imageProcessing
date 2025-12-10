@@ -34,6 +34,11 @@ parser.add_argument('--min_region_size', type=int, default=50,
                     help="Minimum region size for merging small regions")
 parser.add_argument('--merge_threshold', type=float, default=10.0,
                     help="Intensity (or color distance) threshold to merge neighboring regions")
+parser.add_argument(
+    '--criterion', type=str, default='intensity',
+    choices=['intensity', 'color', 'texture'],
+    help="Homogeneity criterion for region growing (intensity, color, texture)"
+)
 
 
 args = parser.parse_args()
@@ -333,14 +338,63 @@ def labelmap_to_color(labels):
     # keep background black
     return output
 
+# ---------------- TEXTURE SUPPORT: LOCAL STANDARD DEVIATION ----------------
 
-def region_growing_dynamic(image, seeds, threshold, adjacency=8):
+def integral_image(img):
+    """Compute (H+1)x(W+1) summed-area table for fast window sums."""
+    img = img.astype(np.float64)
+    H, W = img.shape
+    ii = np.zeros((H+1, W+1), dtype=np.float64)
+    ii[1:, 1:] = img.cumsum(axis=0).cumsum(axis=1)
+    return ii
+
+def local_sum(ii, x0, y0, x1, y1):
+    """Sum of rectangle [x0..x1-1, y0..y1-1] using integral image."""
+    return ii[x1, y1] - ii[x0, y1] - ii[x1, y0] + ii[x0, y0]
+
+def compute_local_std_map(gray, k=5):
+    """
+    Compute local standard deviation per pixel using integral images.
+    Window size = k (must be odd). Returned array is float64 (H,W).
+    """
+    assert k % 2 == 1
+    H, W = gray.shape
+    pad = k // 2
+
+    # Reflect padding
+    padded = np.pad(gray.astype(np.float64), pad, mode='reflect')
+
+    ii = integral_image(padded)
+    ii2 = integral_image(padded * padded)
+
+    std_map = np.zeros((H, W), dtype=np.float64)
+    area = k * k
+
+    for i in range(H):
+        for j in range(W):
+            x0, y0 = i, j
+            x1, y1 = x0 + k, y0 + k
+            s = local_sum(ii,  x0, y0, x1, y1)
+            s2 = local_sum(ii2, x0, y0, x1, y1)
+            mean = s / area
+            var = (s2 / area) - (mean * mean)
+            std_map[i, j] = math.sqrt(max(var, 0.0))
+
+    return std_map
+
+
+
+def region_growing_dynamic(image, seeds, threshold, adjacency=8,
+                           criterion='intensity', descriptor_map=None):
     """
     Region growing that updates region mean on the fly.
     - image: ndarray (H,W) grayscale or (H,W,3) color
     - seeds: list of (row, col)
     Returns: labels (H,W int32), num_regions, region_stats
     """
+    if criterion == 'texture' and descriptor_map is None:
+        raise ValueError("descriptor_map must be provided for texture criterion")
+    
     h, w = image.shape[:2]
     labels = np.zeros((h, w), dtype=np.int32)
     region_stats = {}  # label -> {'sum': scalar or [r,g,b], 'count': int, 'mean': scalar or [r,g,b]}
@@ -355,13 +409,18 @@ def region_growing_dynamic(image, seeds, threshold, adjacency=8):
 
         # initialize region with the seed pixel
         if image.ndim == 2:
-            ssum = int(image[sx, sy])
+            ssum = int(image[sx, sy])    
             smean = float(ssum)
         else:
             ssum = [int(v) for v in image[sx, sy]]
             smean = [float(v) for v in ssum]
 
         region_stats[current_label] = {'sum': ssum, 'count': 1, 'mean': smean}
+        if criterion == 'texture':
+            # descriptor_map is a float64 std_map computed before calling this function
+            tex_val = float(descriptor_map[sx, sy])
+            region_stats[current_label]['tex_sum'] = tex_val
+            region_stats[current_label]['tex_mean'] = tex_val
         labels[sx, sy] = current_label
 
         q = deque()
@@ -373,12 +432,23 @@ def region_growing_dynamic(image, seeds, threshold, adjacency=8):
                 if labels[nx, ny] != 0:
                     continue
                 # distance between neighbor pixel and current region mean
-                if image.ndim == 2:
+                # ---------------- HOMOGENEITY CRITERIA ----------------
+                if criterion == 'intensity':
+                    # grayscale expected; difference vs region mean
                     dist = abs(int(image[nx, ny]) - region_stats[current_label]['mean'])
-                else:
+
+                elif criterion == 'color':
+                    # RGB Euclidean distance
                     mean = region_stats[current_label]['mean']
                     px = image[nx, ny]
                     dist = math.sqrt(sum((mean[i] - int(px[i]))**2 for i in range(3)))
+
+                elif criterion == 'texture':
+                    # descriptor_map must be the std_map
+                    pixel_std = descriptor_map[nx, ny]
+                    region_std_mean = region_stats[current_label]['tex_mean']
+                    dist = abs(pixel_std - region_std_mean)
+
 
                 if dist <= threshold:
                     labels[nx, ny] = current_label
@@ -393,7 +463,10 @@ def region_growing_dynamic(image, seeds, threshold, adjacency=8):
                         region_stats[current_label]['sum'] = [region_stats[current_label]['sum'][i] + int(image[nx, ny][i]) for i in range(3)]
                         region_stats[current_label]['count'] += 1
                         region_stats[current_label]['mean'] = [region_stats[current_label]['sum'][i] / region_stats[current_label]['count'] for i in range(3)]
-
+                    if criterion == 'texture':
+                        tex_val = float(descriptor_map[nx, ny])
+                        region_stats[current_label]['tex_sum'] += tex_val
+                        region_stats[current_label]['tex_mean'] = region_stats[current_label]['tex_sum'] / region_stats[current_label]['count']
         current_label += 1
 
     return labels, current_label - 1, region_stats
@@ -526,9 +599,22 @@ elif args.command == 'region_growing':
                 print("Error: specify --seeds or --seed_x/--seed_y or use --auto_seeds")
                 sys.exit(1)
 
-    print(f"Using {len(seeds)} seed(s). Adjacency={args.adjacency}, threshold={args.threshold}")
+    print(f"Using {len(seeds)} seed(s). Adjacency={args.adjacency}, threshold={args.threshold}, criterion={args.criterion}")
+    if args.criterion == 'texture':
+        # build grayscale version for descriptor computation
+        if img_arr.ndim == 3:
+            gray = np.mean(img_arr, axis=2).astype(np.uint8)
+        else:
+            gray = img_arr
+        print("Computing texture descriptor (local std, k=5)...")
+        descriptor_map = compute_local_std_map(gray, k=5)
+    else:
+        descriptor_map = None
 
-    labels, num_regions, stats = region_growing_dynamic(img_arr, seeds, args.threshold, adjacency=args.adjacency)
+    labels, num_regions, stats = region_growing_dynamic(
+        img_arr, seeds, args.threshold, adjacency=args.adjacency,
+        criterion=args.criterion, descriptor_map=descriptor_map
+    )
     print(f"Initial regions: {num_regions}")
 
     # Merge small regions iteratively until stable
