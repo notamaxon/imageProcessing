@@ -30,19 +30,24 @@ parser.add_argument('--param_l', type=int, default=0, help="Parameter l for Phas
 args = parser.parse_args()
 
 
-# --- IO Helper Functions ---
-def read_image(input_file):
-    """Reads image and converts to grayscale (2D array) for Fourier processing."""
+def read_image(input_file, as_binary=False):
     try:
-        pass
+        img = Image.open(input_file).convert('L')
+        arr = np.array(img)
+        if as_binary:
+            arr = (arr > 127).astype(np.uint8)
+        return arr
     except Exception as e:
         print(f"Error reading image: {e}")
         return None
 
-def save_image(output_file, image_array):
-    """Saves the processed image, ensuring values are in valid range [0, 255]."""
+def save_image(output_file, image_array, is_binary=False):
     try:
-        pass
+        if is_binary:
+            image_array = image_array * 255
+        image_array = np.clip(image_array, 0, 255).astype(np.uint8)
+        Image.fromarray(image_array).save(output_file)
+        print(f"Image saved as {output_file}")
     except Exception as e:
         print(f"Error saving image: {e}")
 
