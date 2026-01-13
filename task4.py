@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser(description="Frequency domain filtration tool (
 
 # General IO commands
 parser.add_argument('--command', type=str, required=True, 
-                    help="Command to run: 'slow_dft', 'fast_fft', 'visualize', 'filter'")
+                    help="Command to run: 'dft', 'fft', 'visualize', 'filter'")
 parser.add_argument('--input', type=str, help="Input image file")
 parser.add_argument('--output', type=str, help="Output image file")
 
@@ -28,7 +28,6 @@ parser.add_argument('--param_k', type=int, default=0, help="Parameter k for Phas
 parser.add_argument('--param_l', type=int, default=0, help="Parameter l for Phase modifying filter (F6)")
 
 args = parser.parse_args()
-
 
 def read_image(input_file, as_binary=False):
     try:
@@ -51,62 +50,144 @@ def save_image(output_file, image_array, is_binary=False):
     except Exception as e:
         print(f"Error saving image: {e}")
 
+def next_power_of_2(x):
+    return 1 if x == 0 else 2**(x - 1).bit_length()
 
-# --- Transform Implementations ---
+def pad_image(image):
+    """Pads image to the next power of 2 for recursive FFT."""
+    h, w = image.shape
+    new_h = next_power_of_2(h)
+    new_w = next_power_of_2(w)
+    
+    if h == new_h and w == new_w:
+        return image, h, w
+        
+    padded = np.zeros((new_h, new_w), dtype=image.dtype)
+    padded[:h, :w] = image
+    return padded, h, w
 
-def dft_1d_slow(vector):
-    """
-    Direct implementation of 1D Discrete Fourier Transform (Slow version).
-    Formula: X(k) = sum(x(n) * W_N^(nk))
-    """
-    pass
+def crop_image(image, h, w):
+    """Crops image back to original size."""
+    return image[:h, :w]
 
-def idft_1d_slow(vector):
-    """
-    Direct implementation of 1D Inverse Discrete Fourier Transform (Slow version).
-    """
-    pass
+def dft_1d(vector):
+    N = len(vector)
+    X = np.zeros(N, dtype=complex)
+    
+    for k in range(N):
+        current_sum = 0 + 0j
+        
+        for n in range(N):
+            angle = -2j * np.pi * n * k / N
+            W = np.exp(angle)
+            
+            current_sum += vector[n] * W
+            
+        X[k] = current_sum
+        
+    return X
 
-def fft_1d_spatial(vector):
-    """
-    (T1) Recursive 1D Fast Fourier Transform using decimation in SPATIAL domain.
-    Splits into even and odd indices.
-    """
-    pass
+def idft_1d(vector):
+    N = len(vector)
+    x = np.zeros(N, dtype=complex)
+    
+    for n in range(N):
+        current_sum = 0 + 0j
+        for k in range(N):
+            # Note positive angle for Inverse
+            angle = 2j * np.pi * n * k / N 
+            W = np.exp(angle)
+            
+            current_sum += vector[k] * W
+            
+        # Scaling factor 1/N
+        x[n] = current_sum / N
+        
+    return x
 
-def ifft_1d_spatial(vector):
-    """
-    (T1) Recursive 1D Inverse Fast Fourier Transform using decimation in SPATIAL domain.
-    """
-    pass
+def dft_2d(image):
+    H, W = image.shape
+    image_complex = image.astype(complex)
+    
+    # 1. Transform Rows
+    # Create a temporary array to store row results
+    row_transformed = np.zeros_like(image_complex)
+    for r in range(H):
+        row_transformed[r, :] = dft_1d(image_complex[r, :])
+        
+    # 2. Transform Columns (on the result of step 1)
+    final_transform = np.zeros_like(image_complex)
+    for c in range(W):
+        final_transform[:, c] = dft_1d(row_transformed[:, c])
+        
+    return final_transform
 
-def fft_2d(image, method='fast'):
-    """
-    Computes 2D FFT by applying 1D transform to rows, then to columns.
-    Args:
-        method: 'fast' for fft_1d_spatial, 'slow' for dft_1d_slow.
-    """
-    pass
+def idft_2d(spectrum):
+    H, W = spectrum.shape
+    
+    # 1. Inverse Rows
+    row_restored = np.zeros_like(spectrum)
+    for r in range(H):
+        row_restored[r, :] = idft_1d(spectrum[r, :])
+        
+    # 2. Inverse Columns
+    final_image = np.zeros_like(spectrum)
+    for c in range(W):
+        final_image[:, c] = idft_1d(row_restored[:, c])
+        
+    return final_image
 
-def ifft_2d(spectrum, method='fast'):
-    """
-    Computes 2D Inverse FFT by applying 1D inverse transform to rows, then to columns.
-    """
-    pass
+def fft_recursive(vector, inverse=False):
+    N = len(vector)
+    
+    if N <= 1:
+        return vector.astype(complex)
+    
+    even = fft_recursive(vector[0::2], inverse)
+    odd  = fft_recursive(vector[1::2], inverse)
+    
+    k = np.arange(N // 2)
+    sign = 1j if inverse else -1j
+    W = np.exp(sign * 2 * np.pi * k / N)
+    
+    t = W * odd
+    return np.concatenate([even + t, even - t])
 
-def fft_shift(spectrum):
-    """
-    Shifts the zero-frequency component to the center of the spectrum.
-    Crucial for applying centered circular masks (filters).
-    """
-    pass
+def fft_1d_t1(vector):
+    return fft_recursive(vector, inverse=False)
 
-def ifft_shift(spectrum):
-    """
-    Inverse shift (undoes fft_shift).
-    """
-    pass
+def ifft_1d_t1(vector):
+    result = fft_recursive(vector, inverse=True)
+    
+    return result / len(vector)
 
+
+def fft_2d(image):
+    H, W = image.shape
+    image_complex = image.astype(complex)
+    
+    row_fft = np.zeros_like(image_complex)
+    for r in range(H):
+        row_fft[r, :] = fft_1d_t1(image_complex[r, :])
+        
+    out = np.zeros_like(image_complex)
+    for c in range(W):
+        out[:, c] = fft_1d_t1(row_fft[:, c])
+        
+    return out
+
+def ifft_2d(spectrum):
+    H, W = spectrum.shape
+
+    row_ifft = np.zeros_like(spectrum)
+    for r in range(H):
+        row_ifft[r, :] = ifft_1d_t1(spectrum[r, :])
+
+    out = np.zeros_like(spectrum)
+    for c in range(W):
+        out[:, c] = ifft_1d_t1(row_ifft[:, c])
+        
+    return out
 
 # --- Visualization ---
 
@@ -190,20 +271,33 @@ def apply_filter(input_file, output_file, filter_type):
 # --- Main Execution Block ---
 
 if __name__ == "__main__":
-    if args.command == 'slow_dft':
-        # Validates the slow definition implementation
-        # Performs a simple reconstruction test using slow DFT
+    if args.command == 'dft':
         if args.input and args.output:
-            print("Running Slow DFT reconstruction...")
-            run_transform_test(args.input, args.output, method='slow')
+            img = read_image(args.input)
+            if img is not None:
+                freq_data = dft_2d(img)
+                
+                restored_complex = idft_2d(freq_data)
+                
+                save_image(args.output, restored_complex)
 
-    elif args.command == 'fast_fft':
-        # Validates the T1 fast implementation
-        if args.input and args.output:
-            print("Running Fast FFT (Spatial Decimation) reconstruction...")
-            start_time = time.time()
-            run_transform_test(args.input, args.output, method='fast')
-            print(f"Execution time: {time.time() - start_time:.4f}s")
+    elif args.command == 'fft':
+            if args.input and args.output:
+                img = read_image(args.input)
+            print("Running Fast FFT (T1)...")
+            
+            padded_img, h, w = pad_image(img)
+            print(f"Image padded from {h}x{w} to {padded_img.shape}")
+            
+            start = time.time()
+            ft = fft_2d(padded_img)
+            print(f"Forward FFT time: {time.time()-start:.4f}s")
+            
+            ift = ifft_2d(ft)
+            
+            restored = crop_image(ift, h, w)
+            
+            save_image(args.output, restored)
 
     elif args.command == 'visualize':
         # Generates a visual representation of the Fourier Spectrum
