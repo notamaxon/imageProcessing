@@ -5,21 +5,21 @@ import numpy as np
 import math
 import cmath
 
-# Argument parsing setup
+
 parser = argparse.ArgumentParser(description="Frequency domain filtration tool (FFT Spatial Decimation & Filters)")
 
-# General IO commands
+
 parser.add_argument('--command', type=str, required=True, 
                     help="Command to run: 'dft', 'fft', 'visualize', 'filter'")
 parser.add_argument('--input', type=str, help="Input image file")
 parser.add_argument('--output', type=str, help="Output image file")
 
-# Filter selection
+
 parser.add_argument('--filter', type=str, 
                     choices=['low_pass', 'high_pass', 'band_pass', 'band_cut', 'edge_detect', 'phase_mod'],
                     help="Type of filter to apply (F1-F6)")
 
-# Filter parameters
+
 parser.add_argument('--radius', type=float, help="Radius for Low/High pass or edge detection filters")
 parser.add_argument('--r_inner', type=float, help="Inner radius for Band pass/cut filters")
 parser.add_argument('--r_outer', type=float, help="Outer radius for Band pass/cut filters")
@@ -242,69 +242,127 @@ def generate_spectrum_visualization(spectrum):
 
 def create_low_pass_mask(shape, radius):
     """
-    (F1) Generates a Low-pass filter mask (High-cut).
-    Passes frequencies inside the radius.
+    (F1) Low-pass (high-cut) filter
     """
-    pass
+    H, W = shape
+    u = np.arange(H) - H // 2
+    v = np.arange(W) - W // 2
+    U, V = np.meshgrid(u, v, indexing='ij')
+    R = np.sqrt(U**2 + V**2)
+    return (R <= radius).astype(float)
+
 
 def create_high_pass_mask(shape, radius):
     """
-    (F2) Generates a High-pass filter mask (Low-cut).
-    Passes frequencies outside the radius.
+    (F2) High-pass (low-cut) filter
     """
-    pass
+    return 1.0 - create_low_pass_mask(shape, radius)
+
 
 def create_band_pass_mask(shape, r_inner, r_outer):
     """
-    (F3) Generates a Band-pass filter mask.
-    Passes frequencies between r_inner and r_outer.
+    (F3) Band-pass filter
     """
-    pass
+    H, W = shape
+    u = np.arange(H) - H // 2
+    v = np.arange(W) - W // 2
+    U, V = np.meshgrid(u, v, indexing='ij')
+    R = np.sqrt(U**2 + V**2)
+    return ((R >= r_inner) & (R <= r_outer)).astype(float)
+
 
 def create_band_cut_mask(shape, r_inner, r_outer):
     """
-    (F4) Generates a Band-cut filter mask.
-    Blocks frequencies between r_inner and r_outer.
+    (F4) Band-cut (band-stop) filter
     """
-    pass
+    return 1.0 - create_band_pass_mask(shape, r_inner, r_outer)
+
 
 def create_edge_detection_mask(shape, radius, angle_deg):
     """
-    (F5) Generates a High-pass filter with detection of edge direction.
-    Allows high frequencies only in specific angular directions.
+    (F5) Directional high-pass filter
     """
-    pass
+    H, W = shape
+    u = np.arange(H) - H // 2
+    v = np.arange(W) - W // 2
+    U, V = np.meshgrid(u, v, indexing='ij')
+
+    R = np.sqrt(U**2 + V**2)
+    angles = np.arctan2(V, U)
+
+    angle_center = math.radians(angle_deg)
+    angle_width = math.radians(15) 
+
+    angle_diff = np.abs((angles - angle_center + np.pi) % (2*np.pi) - np.pi)
+
+    return ((R > radius) & (angle_diff <= angle_width)).astype(float)
+
 
 def create_phase_modifying_mask(shape, k, l):
     """
-    (F6) Generates the Phase modifying filter mask P(n,m).
-    Elements have magnitude 1 and phase depending linearly on position (k, l).
+    (F6) Phase modifying filter
     """
-    pass
+    N, M = shape
+    n = np.arange(N).reshape(N, 1)
+    m = np.arange(M).reshape(1, M)
+
+    phase = (
+        -2 * np.pi * k * n / N
+        -2 * np.pi * l * m / M
+        + (k + l) * np.pi
+    )
+
+    return np.exp(1j * phase)
 
 
-# --- Main Logic wrappers ---
 
-def run_transform_test(input_file, output_file, method='fast'):
-    """
-    Helper to test pure transform reconstruction: Image -> FFT -> IFFT -> Output.
-    Should result in an image identical to input.
-    """
-    pass
+
 
 def apply_filter(input_file, output_file, filter_type):
-    """
-    Main logic pipeline:
-    1. Read Image
-    2. Compute 2D FFT (T1 method)
-    3. Shift Spectrum (to center DC)
-    4. Generate specific Mask (F1-F6)
-    5. Multiply Spectrum by Mask
-    6. Inverse Shift
-    7. Compute 2D IFFT (T1 method)
-    8. Extract Magnitude/Real part and Save
-    """
-    pass
+    image = read_image(input_file)
+    if image is None:
+        return
+
+    padded_img, h, w = pad_image(image)
+
+    
+    spectrum = fft_2d(padded_img)
+    shifted = fft_shift(spectrum)
+
+    shape = shifted.shape
+
+    if filter_type == 'low_pass':
+        mask = create_low_pass_mask(shape, args.radius)
+
+    elif filter_type == 'high_pass':
+        mask = create_high_pass_mask(shape, args.radius)
+
+    elif filter_type == 'band_pass':
+        mask = create_band_pass_mask(shape, args.r_inner, args.r_outer)
+
+    elif filter_type == 'band_cut':
+        mask = create_band_cut_mask(shape, args.r_inner, args.r_outer)
+
+    elif filter_type == 'edge_detect':
+        mask = create_edge_detection_mask(shape, args.radius, args.angle)
+
+    elif filter_type == 'phase_mod':
+        mask = create_phase_modifying_mask(shape, args.param_k, args.param_l)
+
+    else:
+        raise ValueError("Unknown filter type")
+
+    
+    filtered_shifted = shifted * mask
+
+    
+    unshifted = np.fft.ifftshift(filtered_shifted)
+    restored = ifft_2d(unshifted)
+
+    restored = crop_image(np.real(restored), h, w)
+
+    save_image(output_file, restored)
+
 
 
 # --- Main Execution Block ---
@@ -350,10 +408,9 @@ if __name__ == "__main__":
                 save_image(args.output, vis_image)
 
     elif args.command == 'filter':
-        # Applies one of F1-F6 filters
         if args.input and args.output and args.filter:
             
-            # Map arguments to mask generator parameters
+            
             params = {}
             if args.filter in ['low_pass', 'high_pass', 'edge_detect']:
                 if args.radius is None:
@@ -375,7 +432,7 @@ if __name__ == "__main__":
                 params['angle'] = args.angle
             
             if args.filter == 'phase_mod':
-                # k and l have defaults, but we pass them explicitly
+                
                 params['k'] = args.param_k
                 params['l'] = args.param_l
 
