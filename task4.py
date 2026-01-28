@@ -328,8 +328,13 @@ def apply_filter(input_file, output_file, filter_type):
     
     spectrum = fft_2d(padded_img)
     shifted = fft_shift(spectrum)
-
+    
     shape = shifted.shape
+    cy, cx = shape[0] // 2, shape[1] // 2
+    dc_value = shifted[cy, cx]
+
+
+    
 
     if filter_type == 'low_pass':
         mask = create_low_pass_mask(shape, args.radius)
@@ -354,6 +359,9 @@ def apply_filter(input_file, output_file, filter_type):
 
     
     filtered_shifted = shifted * mask
+
+    if filter_type == 'high_pass':
+        filtered_shifted[cy, cx] = dc_value
 
     
     unshifted = np.fft.ifftshift(filtered_shifted)
