@@ -42,6 +42,7 @@ def read_image(input_file, as_binary=False):
 
 def save_image(output_file, image_array, is_binary=False):
     try:
+        image_array = np.abs(image_array)
         if is_binary:
             image_array = image_array * 255
         image_array = np.clip(image_array, 0, 255).astype(np.uint8)
@@ -54,7 +55,6 @@ def next_power_of_2(x):
     return 1 if x == 0 else 2**(x - 1).bit_length()
 
 def pad_image(image):
-    """Pads image to the next power of 2 for recursive FFT."""
     h, w = image.shape
     new_h = next_power_of_2(h)
     new_w = next_power_of_2(w)
@@ -67,7 +67,6 @@ def pad_image(image):
     return padded, h, w
 
 def crop_image(image, h, w):
-    """Crops image back to original size."""
     return image[:h, :w]
 
 def dft_1d(vector):
@@ -85,7 +84,7 @@ def dft_1d(vector):
             
         X[k] = current_sum
         
-    return X
+    return X / math.sqrt(N)
 
 def idft_1d(vector):
     N = len(vector)
@@ -94,14 +93,12 @@ def idft_1d(vector):
     for n in range(N):
         current_sum = 0 + 0j
         for k in range(N):
-            # Note positive angle for Inverse
             angle = 2j * np.pi * n * k / N 
             W = np.exp(angle)
             
             current_sum += vector[k] * W
             
-        # Scaling factor 1/N
-        x[n] = current_sum / N
+        x[n] = current_sum / math.sqrt(N)
         
     return x
 
@@ -109,13 +106,10 @@ def dft_2d(image):
     H, W = image.shape
     image_complex = image.astype(complex)
     
-    # 1. Transform Rows
-    # Create a temporary array to store row results
     row_transformed = np.zeros_like(image_complex)
     for r in range(H):
         row_transformed[r, :] = dft_1d(image_complex[r, :])
         
-    # 2. Transform Columns (on the result of step 1)
     final_transform = np.zeros_like(image_complex)
     for c in range(W):
         final_transform[:, c] = dft_1d(row_transformed[:, c])
@@ -124,13 +118,10 @@ def dft_2d(image):
 
 def idft_2d(spectrum):
     H, W = spectrum.shape
-    
-    # 1. Inverse Rows
     row_restored = np.zeros_like(spectrum)
     for r in range(H):
         row_restored[r, :] = idft_1d(spectrum[r, :])
         
-    # 2. Inverse Columns
     final_image = np.zeros_like(spectrum)
     for c in range(W):
         final_image[:, c] = idft_1d(row_restored[:, c])
@@ -154,12 +145,12 @@ def fft_recursive(vector, inverse=False):
     return np.concatenate([even + t, even - t])
 
 def fft_1d_t1(vector):
-    return fft_recursive(vector, inverse=False)
+    return fft_recursive(vector, inverse=False) / math.sqrt(len(vector))
 
 def ifft_1d_t1(vector):
-    result = fft_recursive(vector, inverse=True)
+    result = fft_recursive(vector, inverse=True) / math.sqrt(len(vector))
     
-    return result / len(vector)
+    return result
 
 
 def fft_2d(image):
@@ -194,39 +185,21 @@ def fft_shift(spectrum):
     M, N = spectrum.shape
     mid_m, mid_n = M // 2, N // 2
     
-    # Create a new array for the shifted result
     shifted = np.zeros_like(spectrum)
     
-    # Swap Quadrants
-    # 1. Top-Left (Q2) -> Bottom-Right (Q4)
     shifted[mid_m:, mid_n:] = spectrum[0:mid_m, 0:mid_n]
-    
-    # 2. Bottom-Right (Q4) -> Top-Left (Q2)
     shifted[0:mid_m, 0:mid_n] = spectrum[mid_m:, mid_n:]
-    
-    # 3. Top-Right (Q1) -> Bottom-Left (Q3)
     shifted[mid_m:, 0:mid_n] = spectrum[0:mid_m, mid_n:]
-    
-    # 4. Bottom-Left (Q3) -> Top-Right (Q1)
     shifted[0:mid_m, mid_n:] = spectrum[mid_m:, 0:mid_n]
     
     return shifted
 
 
 def generate_spectrum_visualization(spectrum):
-    """
-    Converts complex spectrum to a visualizable magnitude image.
-    Uses log transform: s = c * log(1 + |F|)
-    """
-    # 1. Compute Magnitude (Absolute value of complex number)
     magnitude = np.abs(spectrum)
-    
-    # 2. Apply Logarithmic Transformation
-    # Adding 1 is necessary because log(0) is undefined.
-    # This compresses the huge dynamic range so we can see details.
+
     spectrum_log = np.log(1 + magnitude)
     
-    # 3. Normalize to 0-255 range
     min_val = spectrum_log.min()
     max_val = spectrum_log.max()
     
@@ -237,8 +210,6 @@ def generate_spectrum_visualization(spectrum):
     
     return normalized.astype(np.uint8)
 
-
-# --- Filter Mask Generators (F1 - F6) ---
 
 def create_low_pass_mask(shape, radius):
     """
@@ -373,24 +344,22 @@ def apply_filter(input_file, output_file, filter_type):
 
 
 
-# --- Main Execution Block ---
-
 if __name__ == "__main__":
     if args.command == 'dft':
         if args.input and args.output:
             img = read_image(args.input)
             if img is not None:
+                start = time.time()
                 freq_data = dft_2d(img)
+                print(f"Forward DFT time: {time.time()-start:.4f}s")
                 
                 restored_complex = idft_2d(freq_data)
-                
                 save_image(args.output, restored_complex)
 
     elif args.command == 'fft':
             if args.input and args.output:
                 img = read_image(args.input)
             print("Running Fast FFT (T1)...")
-            
             padded_img, h, w = pad_image(img)
             print(f"Image padded from {h}x{w} to {padded_img.shape}")
             
@@ -400,8 +369,7 @@ if __name__ == "__main__":
             
             ift = ifft_2d(ft)
             
-            restored = crop_image(ift, h, w)
-            
+            restored = crop_image(ift, h, w)      
             save_image(args.output, restored)
 
     elif args.command == 'visualize':
